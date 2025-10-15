@@ -30,7 +30,6 @@ const Canvas: React.FC<CanvasProps> = ({
     const [currentPoint, setCurrentPoint] = useState<Point>({ x: 0, y: 0 });
     const [polygonPoints, setPolygonPoints] = useState<Point[]>([]);
     
-    // Transform state
     const [activeHandle, setActiveHandle] = useState<HandleType | null>(null);
     const initialDragState = useRef<{
         startPoint: Point;
@@ -40,26 +39,37 @@ const Canvas: React.FC<CanvasProps> = ({
         initialGroupBbox: Shape;
     } | null>(null);
 
-    const getMousePosition = (e: MouseEvent | React.MouseEvent): Point => {
+    const getMousePosition = useCallback((e: MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent): Point => {
         if (!svgRef.current) return { x: 0, y: 0 };
         const CTM = svgRef.current.getScreenCTM();
         if (!CTM) return { x: 0, y: 0 };
-        return {
-            x: (e.clientX - CTM.e) / CTM.a,
-            y: (e.clientY - CTM.f) / CTM.d,
-        };
-    };
 
-    const addShapeToLayer = (shape: Shape) => {
+        const evt = 'nativeEvent' in e ? e.nativeEvent : e;
+        const point = 'touches' in evt && evt.touches.length > 0
+            ? evt.touches[0]
+            : 'changedTouches' in evt && evt.changedTouches.length > 0
+                ? evt.changedTouches[0]
+                : evt as MouseEvent;
+
+        return {
+            x: (point.clientX - CTM.e) / CTM.a,
+            y: (point.clientY - CTM.f) / CTM.d,
+        };
+    }, []);
+
+
+    const addShapeToLayer = useCallback((shape: Shape) => {
         if (!activeLayerId) return;
         setLayers(prevLayers =>
             prevLayers.map(layer =>
                 layer.id === activeLayerId ? { ...layer, shapes: [...layer.shapes, shape] } : layer
             )
         );
-    };
+    }, [activeLayerId, setLayers]);
 
-    const handleDrawMouseDown = (e: React.MouseEvent) => {
+    const handleDrawStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+        if ('touches' in e) e.preventDefault();
+        
         const pos = getMousePosition(e);
         if (activeTool === ToolType.SELECT) {
             return;
@@ -70,14 +80,15 @@ const Canvas: React.FC<CanvasProps> = ({
         setDrawing(true);
         setStartPoint(pos);
         setCurrentPoint(pos);
-    };
+    }, [activeTool, getMousePosition]);
     
-    const handleDrawMouseMove = (e: React.MouseEvent) => {
+    const handleDrawMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
         if (!drawing) return;
+        if ('touches' in e) e.preventDefault();
         setCurrentPoint(getMousePosition(e));
-    };
+    }, [drawing, getMousePosition]);
 
-    const handleDrawMouseUp = () => {
+    const handleDrawEnd = useCallback(() => {
         if (!drawing) return;
         setDrawing(false);
 
@@ -104,7 +115,7 @@ const Canvas: React.FC<CanvasProps> = ({
         if (newShape) {
             addShapeToLayer(newShape);
         }
-    };
+    }, [drawing, activeTool, startPoint, currentPoint, defaultStyles, addShapeToLayer]);
     
     const handleCanvasClick = (e: React.MouseEvent) => {
         if (activeTool !== ToolType.POLYGON) return;
@@ -248,10 +259,8 @@ const Canvas: React.FC<CanvasProps> = ({
         updateShapes(shapeUpdates);
     }, [updateShapes]);
 
-    const handleTransformMouseMove = useCallback((e: MouseEvent) => {
+    const handleTransformMove = useCallback((e: MouseEvent | TouchEvent) => {
         if (!activeHandle || !initialDragState.current) return;
-        e.preventDefault();
-        e.stopPropagation();
 
         const { startPoint, bbox: initialBBox, svg, initialShapes, initialGroupBbox } = initialDragState.current;
         const currentPoint = getMousePosition(e);
@@ -275,7 +284,8 @@ const Canvas: React.FC<CanvasProps> = ({
             if (activeHandle.includes('s')) { newHeight += dy; }
             if (activeHandle.includes('n')) { newHeight -= dy; newY += dy; }
 
-            if (e.shiftKey && initialBBox.width > 0 && initialBBox.height > 0) {
+            const isShiftPressed = e instanceof MouseEvent && e.shiftKey;
+            if (isShiftPressed && initialBBox.width > 0 && initialBBox.height > 0) {
                 const ratio = initialBBox.width / initialBBox.height;
                 const newRatioW = newWidth / ratio;
                 const newRatioH = newHeight * ratio;
@@ -298,9 +308,9 @@ const Canvas: React.FC<CanvasProps> = ({
                 handleSelectionTransform({ x: newX, y: newY, width: newWidth, height: newHeight }, initialShapes, initialGroupBbox);
             }
         }
-    }, [activeHandle, handleSelectionTransform]);
+    }, [activeHandle, handleSelectionTransform, getMousePosition]);
     
-    const handleTransformMouseUp = useCallback((e: MouseEvent) => {
+    const handleTransformEnd = useCallback((e: MouseEvent | TouchEvent) => {
         if (!activeHandle) return;
         e.stopPropagation();
         endBatchUpdate();
@@ -310,17 +320,26 @@ const Canvas: React.FC<CanvasProps> = ({
 
     useEffect(() => {
         if (activeHandle) {
-            window.addEventListener('mousemove', handleTransformMouseMove);
-            window.addEventListener('mouseup', handleTransformMouseUp);
+            const moveHandler = (e: MouseEvent | TouchEvent) => {
+                if ('touches' in e) e.preventDefault();
+                handleTransformMove(e);
+            }
+            window.addEventListener('mousemove', moveHandler);
+            window.addEventListener('touchmove', moveHandler, { passive: false });
+            window.addEventListener('mouseup', handleTransformEnd);
+            window.addEventListener('touchend', handleTransformEnd);
             return () => {
-                window.removeEventListener('mousemove', handleTransformMouseMove);
-                window.removeEventListener('mouseup', handleTransformMouseUp);
+                window.removeEventListener('mousemove', moveHandler);
+                window.removeEventListener('touchmove', moveHandler);
+                window.removeEventListener('mouseup', handleTransformEnd);
+                window.removeEventListener('touchend', handleTransformEnd);
             };
         }
-    }, [activeHandle, handleTransformMouseMove, handleTransformMouseUp]);
+    }, [activeHandle, handleTransformMove, handleTransformEnd]);
 
-    const handleTransformMouseDown = (e: React.MouseEvent, handle: HandleType, boxShape: Shape, shapesToTransform: Shape[]) => {
+    const handleTransformStart = (e: React.MouseEvent | React.TouchEvent, handle: HandleType, boxShape: Shape, shapesToTransform: Shape[]) => {
         e.stopPropagation();
+        if ('touches' in e) e.preventDefault();
         if (!svgRef.current) return;
         
         beginBatchUpdate();
@@ -339,9 +358,13 @@ const Canvas: React.FC<CanvasProps> = ({
         <svg
             ref={svgRef}
             className="w-full h-full cursor-crosshair bg-white"
-            onMouseDown={handleDrawMouseDown}
-            onMouseMove={handleDrawMouseMove}
-            onMouseUp={handleDrawMouseUp}
+            onMouseDown={handleDrawStart}
+            onMouseMove={handleDrawMove}
+            onMouseUp={handleDrawEnd}
+            onMouseLeave={handleDrawEnd}
+            onTouchStart={handleDrawStart}
+            onTouchMove={handleDrawMove}
+            onTouchEnd={handleDrawEnd}
             onClick={handleCanvasClick}
         >
             {backgroundImage && (
@@ -364,13 +387,14 @@ const Canvas: React.FC<CanvasProps> = ({
                             shape={shape}
                             isSelected={selectedShapeIds.includes(shape.id) && layer.id === activeLayerId}
                             activeTool={activeTool}
-                            onMouseDown={(e: React.MouseEvent) => {
+                            onPointerDown={(e: React.MouseEvent | React.TouchEvent) => {
                                 if (activeTool !== ToolType.SELECT) return;
 
                                 const shapeId = shape.id;
                                 const isAlreadySelected = selectedShapeIds.includes(shapeId);
+                                const isCtrlKey = 'ctrlKey' in e ? e.ctrlKey : e.metaKey;
 
-                                if (e.ctrlKey || e.metaKey) {
+                                if (isCtrlKey) {
                                     setSelectedShapeIds(prev =>
                                         prev.includes(shapeId)
                                             ? prev.filter(id => id !== shapeId)
@@ -379,8 +403,8 @@ const Canvas: React.FC<CanvasProps> = ({
                                 } else {
                                     if (!isAlreadySelected) {
                                         setSelectedShapeIds([shapeId]);
-                                    } else {
-                                        handleTransformMouseDown(e, 'move', selectionBoxShape!, selectedShapes);
+                                    } else if (selectionBoxShape) {
+                                        handleTransformStart(e, 'move', selectionBoxShape, selectedShapes);
                                     }
                                 }
                                 e.stopPropagation();
@@ -400,7 +424,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 <SelectionHandles 
                     shape={selectionBoxShape} 
                     selectedCount={selectedCount}
-                    onMouseDown={(e, handle) => handleTransformMouseDown(e, handle, selectionBoxShape, selectedShapes)}
+                    onPointerDown={(e, handle) => handleTransformStart(e, handle, selectionBoxShape, selectedShapes)}
                 />
             )}
         </svg>

@@ -41,12 +41,12 @@ export const getBoundingBox = (shape: Shape): BBox => {
 interface SelectionHandlesProps {
     shape: Shape;
     selectedCount: number;
-    onMouseDown: (event: React.MouseEvent, handle: HandleType) => void;
+    onPointerDown: (event: React.MouseEvent | React.TouchEvent, handle: HandleType) => void;
 }
 
-const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCount, onMouseDown }) => {
+const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCount, onPointerDown }) => {
     const bbox = getBoundingBox(shape);
-    const handleSize = 8;
+    const handleSize = 10;
     const halfHandle = handleSize / 2;
     
     const strokeColor = selectedCount > 1 ? 'red' : 'blue';
@@ -60,7 +60,7 @@ const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCoun
         { type: 's', x: bbox.cx - halfHandle, y: bbox.y + bbox.height - halfHandle, cursor: 'ns-resize' },
         { type: 'sw', x: bbox.x - halfHandle, y: bbox.y + bbox.height - halfHandle, cursor: 'nesw-resize' },
         { type: 'w', x: bbox.x - halfHandle, y: bbox.cy - halfHandle, cursor: 'ew-resize' },
-        { type: 'rotate', x: bbox.cx - halfHandle, y: bbox.y - 25 - halfHandle, cursor: 'crosshair' },
+        { type: 'rotate', x: bbox.cx - halfHandle, y: bbox.y - 30 - halfHandle, cursor: 'crosshair' },
     ];
     
     const rotationCenter = { x: bbox.cx, y: bbox.cy };
@@ -78,7 +78,7 @@ const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCoun
                 strokeDasharray="4 2"
                 style={{ pointerEvents: 'none' }}
             />
-            <line x1={bbox.cx} y1={bbox.y} x2={bbox.cx} y2={bbox.y - 25} stroke={strokeColor} strokeWidth="1" />
+            <line x1={bbox.cx} y1={bbox.y} x2={bbox.cx} y2={bbox.y - 30} stroke={strokeColor} strokeWidth="1" />
             {handles.map(h => {
                 const handleProps = {
                     key: h.type,
@@ -90,9 +90,10 @@ const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCoun
                     stroke: strokeColor,
                     strokeWidth:"1",
                     style: { cursor: h.cursor },
-                    onMouseDown: (e: React.MouseEvent) => onMouseDown(e, h.type)
+                    onMouseDown: (e: React.MouseEvent) => onPointerDown(e, h.type),
+                    onTouchStart: (e: React.TouchEvent) => onPointerDown(e, h.type),
                 };
-                return h.type === 'rotate' ? <circle cx={h.x + halfHandle} cy={h.y + halfHandle} r={halfHandle} {...handleProps} /> : <rect {...handleProps} />;
+                return h.type === 'rotate' ? <circle cx={h.x + halfHandle} cy={h.y + halfHandle} r={halfHandle + 2} {...handleProps} /> : <rect {...handleProps} />;
              })}
         </g>
     );

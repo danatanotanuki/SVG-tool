@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { ShapeStyle } from '../types';
 
@@ -35,10 +34,10 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ style, onStyleChange,
 
     return (
         <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-700 border-b pb-2">
-                {getTitle()}
-            </h3>
-            <div className="space-y-3">
+            <div className="border-b pb-2">
+                <p className="text-sm text-gray-600 font-semibold">{getTitle()}</p>
+             </div>
+            <div className="space-y-3 pt-2">
                 <StyleInput
                     label="Fill Color"
                     type="color"

@@ -12,7 +12,28 @@ import SaveSvgModal from './components/SaveSvgModal';
 import ActionPanel from './components/ActionPanel';
 import { exportToSVG } from './utils/svgExport';
 import { useHistory } from './hooks/useHistory';
-import { UndoIcon, RedoIcon } from './components/icons/Icons';
+import { UndoIcon, RedoIcon, ChevronLeftIcon, ChevronRightIcon, DuplicateIcon, PropertiesIcon, LayersIcon, BackgroundIcon, MenuIcon } from './components/icons/Icons';
+
+type BottomBarTab = 'actions' | 'properties' | 'layers' | 'background';
+
+const TabButton: React.FC<{
+    label: string;
+    isActive: boolean;
+    onClick: () => void;
+    children: React.ReactNode;
+}> = ({ label, isActive, onClick, children }) => (
+    <button
+        title={label}
+        onClick={onClick}
+        className={`flex flex-col items-center justify-center w-1/4 p-1 rounded-lg text-xs transition-colors duration-200 ${
+            isActive ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:bg-gray-100'
+        }`}
+    >
+        {children}
+        <span className="mt-1">{label}</span>
+    </button>
+);
+
 
 const App: React.FC = () => {
     const { 
@@ -41,6 +62,24 @@ const App: React.FC = () => {
     const [backgroundImage, setBackgroundImage] = useState<{ src: string; opacity: number } | null>(null);
     const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+    
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const [isToolbarOpen, setIsToolbarOpen] = useState(!isMobile);
+    const [isTopPanelOpen, setIsTopPanelOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<BottomBarTab>('properties');
+
+    useEffect(() => {
+        const checkMobile = () => {
+            const isMobileView = window.innerWidth < 768;
+            if (isMobileView !== isMobile) {
+                setIsMobile(isMobileView);
+                setIsToolbarOpen(!isMobileView);
+                setIsTopPanelOpen(false);
+            }
+        };
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, [isMobile]);
 
     const getActiveLayer = useCallback(() => {
         return layers.find(l => l.id === activeLayerId);
@@ -205,10 +244,10 @@ const App: React.FC = () => {
 
 
     return (
-        <div className="flex flex-col h-screen font-sans text-gray-800">
-            <header className="bg-white shadow-md z-20 p-2 flex items-center justify-between">
-                <h1 className="text-xl font-bold text-gray-700">SVG Vector Draw</h1>
-                <div className="flex items-center space-x-4">
+        <div className="flex flex-col h-screen font-sans text-gray-800 bg-gray-100 overflow-hidden">
+            <header className="bg-white shadow-md z-40 p-2 flex items-center justify-between">
+                <h1 className="text-xl font-bold text-gray-700">SVG Draw</h1>
+                <div className="flex items-center space-x-2 md:space-x-4">
                      <button
                         onClick={undo}
                         disabled={!canUndo}
@@ -225,46 +264,96 @@ const App: React.FC = () => {
                      >
                         <RedoIcon className="w-5 h-5" />
                      </button>
-                     <div className="w-px h-6 bg-gray-300"></div>
+                     <div className="w-px h-6 bg-gray-300 hidden md:block"></div>
+                     
+                     <button
+                        onClick={() => setIsTopPanelOpen(p => !p)}
+                        title="Toggle Panels"
+                        className="p-2 rounded-md transition-colors duration-200 text-gray-600 bg-gray-100 hover:bg-gray-200 md:hidden"
+                     >
+                        <MenuIcon className="w-5 h-5" />
+                     </button>
 
                      <button
                         onClick={() => setIsHelpModalOpen(true)}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded transition-colors duration-200"
+                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-3 md:px-4 rounded text-sm md:text-base transition-colors duration-200"
                     >
-                        How to Use
+                        Help
                     </button>
                     <button
                         onClick={handleSaveSVG}
-                        className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition-colors duration-200"
+                        className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 md:px-4 rounded text-sm md:text-base transition-colors duration-200"
                     >
-                        Save as SVG
+                        Save
                     </button>
                 </div>
             </header>
+            
             <div className="flex flex-1 overflow-hidden">
-                <Toolbar activeTool={activeTool} onToolSelect={setActiveTool} />
-                <main className="flex-1 bg-gray-200 relative">
-                    <Canvas
-                        layers={layers}
-                        activeLayerId={activeLayerId}
-                        setLayers={setLayers}
-                        selectedShapeIds={selectedShapeIds}
-                        setSelectedShapeIds={setSelectedShapeIds}
-                        activeTool={activeTool}
-                        defaultStyles={defaultStyles}
-                        backgroundImage={backgroundImage}
-                        updateShapes={updateShapes}
-                        selectedCount={selectedShapeIds.length}
-                        beginBatchUpdate={beginBatchUpdate}
-                        endBatchUpdate={endBatchUpdate}
-                    />
-                </main>
-                <aside className="w-64 bg-white shadow-lg p-4 space-y-6 overflow-y-auto z-10">
+                <div className="relative flex-1 h-full">
+                    <div className={`absolute top-0 left-0 h-full z-30 transition-transform duration-300 ease-in-out ${isToolbarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+                        <Toolbar activeTool={activeTool} onToolSelect={setActiveTool} />
+                    </div>
+
+                    <button
+                        onClick={() => setIsToolbarOpen(prev => !prev)}
+                        className="absolute top-4 z-30 p-2 bg-white rounded-r-lg shadow-lg transition-all duration-300 ease-in-out"
+                        style={{ left: isToolbarOpen ? '4rem' : '0' }}
+                        aria-label={isToolbarOpen ? 'Collapse toolbar' : 'Expand toolbar'}
+                    >
+                        {isToolbarOpen ? <ChevronLeftIcon className="w-5 h-5" /> : <ChevronRightIcon className="w-5 h-5" />}
+                    </button>
+
+                    <div className={`absolute top-0 left-0 right-0 z-20 md:hidden bg-white shadow-lg transition-transform duration-300 ease-in-out ${isTopPanelOpen ? 'translate-y-0' : '-translate-y-full'}`}>
+                        <div className="p-2 flex flex-col max-h-[50vh]">
+                            <div className="flex items-center justify-around border-b pb-2 mb-2">
+                                <TabButton label="Actions" isActive={activeTab === 'actions'} onClick={() => setActiveTab('actions')}>
+                                    <DuplicateIcon className="w-5 h-5" />
+                                </TabButton>
+                                <TabButton label="Properties" isActive={activeTab === 'properties'} onClick={() => setActiveTab('properties')}>
+                                    <PropertiesIcon className="w-5 h-5" />
+                                </TabButton>
+                                <TabButton label="Layers" isActive={activeTab === 'layers'} onClick={() => setActiveTab('layers')}>
+                                    <LayersIcon className="w-5 h-5" />
+                                </TabButton>
+                                <TabButton label="Background" isActive={activeTab === 'background'} onClick={() => setActiveTab('background')}>
+                                    <BackgroundIcon className="w-5 h-5" />
+                                </TabButton>
+                            </div>
+                            <div className="overflow-y-auto px-2">
+                                {activeTab === 'actions' && <ActionPanel onDuplicate={handleDuplicateShapes} onDelete={handleDeleteShapes} selectedCount={selectedShapeIds.length} onDeselectAll={handleDeselectAll} onSave={handleSaveSVG} />}
+                                {activeTab === 'properties' && <PropertiesPanel style={getConsolidatedStyle()} onStyleChange={handleStyleChange} selectedShapesCount={selectedShapeIds.length} />}
+                                {activeTab === 'layers' && <LayerPanel layers={layers} setLayers={setLayers} activeLayerId={activeLayerId} setActiveLayerId={setActiveLayerId} setSelectedShapeId={(id) => setSelectedShapeIds(id ? [id] : [])} />}
+                                {activeTab === 'background' && <BackgroundPanel onImageChange={setBackgroundImage} />}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <main className="w-full h-full bg-gray-200">
+                        <Canvas
+                            layers={layers}
+                            activeLayerId={activeLayerId}
+                            setLayers={setLayers}
+                            selectedShapeIds={selectedShapeIds}
+                            setSelectedShapeIds={setSelectedShapeIds}
+                            activeTool={activeTool}
+                            defaultStyles={defaultStyles}
+                            backgroundImage={backgroundImage}
+                            updateShapes={updateShapes}
+                            selectedCount={selectedShapeIds.length}
+                            beginBatchUpdate={beginBatchUpdate}
+                            endBatchUpdate={endBatchUpdate}
+                        />
+                    </main>
+                </div>
+                
+                <aside className="w-64 bg-white shadow-lg p-4 space-y-6 overflow-y-auto z-10 hidden md:block flex-shrink-0">
                     <ActionPanel
                         onDuplicate={handleDuplicateShapes}
                         onDelete={handleDeleteShapes}
                         selectedCount={selectedShapeIds.length}
                         onDeselectAll={handleDeselectAll}
+                        onSave={handleSaveSVG}
                     />
                     <PropertiesPanel
                         style={getConsolidatedStyle()}

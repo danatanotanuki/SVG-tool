@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { Layer } from '../types';
 import { PlusIcon, TrashIcon, EyeIcon, EyeOffIcon, ChevronUpIcon, ChevronDownIcon } from './icons/Icons';
@@ -55,8 +54,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ layers, setLayers, activeLayerI
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between border-b pb-2">
-                <h3 className="text-lg font-semibold text-gray-700">Layers</h3>
-                <button onClick={addLayer} className="p-1 text-gray-600 hover:text-blue-500 rounded">
+                 <p className="text-sm text-gray-600 font-semibold">Drawing Layers</p>
+                <button onClick={addLayer} title="Add new layer" className="p-1 text-gray-600 hover:text-blue-500 rounded">
                     <PlusIcon className="w-5 h-5" />
                 </button>
             </div>
@@ -70,7 +69,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({ layers, setLayers, activeLayerI
                         }`}
                     >
                         <div className="flex items-center justify-between">
-                            <span className="font-medium">{layer.name}</span>
+                            <span className="font-medium text-sm">{layer.name}</span>
                             <div className="flex items-center space-x-1 text-gray-500">
                                 <button onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, 'up'); }} disabled={index === 0} className="p-1 hover:text-gray-800 disabled:opacity-30"><ChevronUpIcon className="w-4 h-4" /></button>
                                 <button onClick={(e) => { e.stopPropagation(); moveLayer(layer.id, 'down'); }} disabled={index === layers.length - 1} className="p-1 hover:text-gray-800 disabled:opacity-30"><ChevronDownIcon className="w-4 h-4" /></button>
