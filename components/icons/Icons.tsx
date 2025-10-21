@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 type IconProps = React.SVGProps<SVGSVGElement>;
@@ -7,6 +6,29 @@ export const MousePointerIcon: React.FC<IconProps> = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"></path>
         <path d="M13 13l6 6"></path>
+    </svg>
+);
+
+export const MultiSelectIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="8" y="8" width="12" height="12" rx="2" ry="2"></rect>
+        <path d="M4 16V4h12"></path>
+    </svg>
+);
+
+export const GroupIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+      <rect x="8" y="8" width="3" height="3"></rect>
+      <rect x="13" y="13" width="3" height="3"></rect>
+    </svg>
+);
+
+export const UngroupIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 3a2 2 0 0 0-2 2v2m4 14a2 2 0 0 0 2 2h2m8-18a2 2 0 0 1 2 2v2m-4 14a2 2 0 0 1-2 2h-2" strokeDasharray="2 2"></path>
+      <rect x="4" y="9" width="5" height="5" rx="1"></rect>
+      <rect x="15" y="9" width="5" height="5" rx="1"></rect>
     </svg>
 );
 
@@ -150,5 +172,39 @@ export const SaveIcon: React.FC<IconProps> = (props) => (
         <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
         <polyline points="17 21 17 13 7 13 7 21"></polyline>
         <polyline points="7 3 7 8 15 8"></polyline>
+    </svg>
+);
+
+export const RotateCwIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 2v6h-6"/>
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+    </svg>
+);
+
+export const ExpandIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m21 21-6-6m6 6v-4.8m0 4.8h-4.8"/>
+        <path d="M3 12.2v4.8m0 0h4.8m-4.8 0L9 15"/>
+        <path d="M3 3l6 6"/>
+        <path d="M21 3h-4.8m0 0V7.8m0-4.8L15 9"/>
+    </svg>
+);
+
+export const MoveIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="5 9 2 12 5 15"></polyline>
+        <polyline points="9 5 12 2 15 5"></polyline>
+        <polyline points="15 19 12 22 9 19"></polyline>
+        <polyline points="19 9 22 12 19 15"></polyline>
+        <line x1="2" y1="12" x2="22" y2="12"></line>
+        <line x1="12" y1="2" x2="12" y2="22"></line>
+    </svg>
+);
+
+export const CornerRadiusIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 12c0-3.87-3.13-7-7-7H5v7c3.87 0 7 3.13 7 7h7v-7z"/>
+        <path d="M5 19V5h7"/>
     </svg>
 );

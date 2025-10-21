@@ -17,12 +17,13 @@ interface CanvasProps {
     selectedCount: number;
     beginBatchUpdate: () => void;
     endBatchUpdate: () => void;
+    isMultiSelectMode: boolean;
 }
 
 const Canvas: React.FC<CanvasProps> = ({
     layers, activeLayerId, setLayers, selectedShapeIds,
     setSelectedShapeIds, activeTool, defaultStyles, backgroundImage, updateShapes,
-    selectedCount, beginBatchUpdate, endBatchUpdate
+    selectedCount, beginBatchUpdate, endBatchUpdate, isMultiSelectMode
 }) => {
     const svgRef = useRef<SVGSVGElement>(null);
     const [drawing, setDrawing] = useState(false);
@@ -242,6 +243,7 @@ const Canvas: React.FC<CanvasProps> = ({
                  newPos = transformPoint({x: initialShape.x, y: initialShape.y}, oldBbox, groupMatrix);
                  shapeUpdates.x = newPos.x;
                  shapeUpdates.y = newPos.y;
+                 shapeUpdates.rotation = initialShape.rotation + dRotation;
             }
 
             if (initialShape.type === ToolType.RECTANGLE) {
@@ -252,7 +254,6 @@ const Canvas: React.FC<CanvasProps> = ({
                 (shapeUpdates as Partial<EllipseShape>).rx = initialEllipse.rx * scaleX;
                 (shapeUpdates as Partial<EllipseShape>).ry = initialEllipse.ry * scaleY;
             }
-            shapeUpdates.rotation = initialShape.rotation + dRotation;
             return { id: initialShape.id, updates: shapeUpdates };
         });
 
@@ -276,36 +277,28 @@ const Canvas: React.FC<CanvasProps> = ({
             ) * 180 / Math.PI + 90; // +90 to align with top handle
             handleSelectionTransform({ rotation: angle }, initialShapes, initialGroupBbox);
         } else { // Resize
-            let { x, y, width, height } = initialBBox;
-            let newX = x, newY = y, newWidth = width, newHeight = height;
+            const { x, y, width, height, rotation } = initialBBox;
+            
+            // Rotate mouse delta into shape's local coordinate system to handle rotated shapes
+            const rad = rotation * Math.PI / 180;
+            const cos = Math.cos(rad);
+            const sin = Math.sin(rad);
+            const localDx = dx * cos + dy * sin;
+            const localDy = -dx * sin + dy * cos;
+            
+            let newWidth = width;
+            let newHeight = height;
 
-            if (activeHandle.includes('e')) { newWidth += dx; }
-            if (activeHandle.includes('w')) { newWidth -= dx; newX += dx; }
-            if (activeHandle.includes('s')) { newHeight += dy; }
-            if (activeHandle.includes('n')) { newHeight -= dy; newY += dy; }
-
-            const isShiftPressed = e instanceof MouseEvent && e.shiftKey;
-            if (isShiftPressed && initialBBox.width > 0 && initialBBox.height > 0) {
-                const ratio = initialBBox.width / initialBBox.height;
-                const newRatioW = newWidth / ratio;
-                const newRatioH = newHeight * ratio;
-
-                if (newWidth/initialBBox.width > newHeight/initialBBox.height){
-                     newHeight = newRatioW;
-                } else {
-                     newWidth = newRatioH;
-                }
-
-                if (activeHandle.includes('n')) {
-                    newY = y + height - newHeight;
-                }
-                if (activeHandle.includes('w')) {
-                    newX = x + width - newWidth;
-                }
-            }
+            // Symmetrically adjust width/height based on handle and local delta
+            if (activeHandle.includes('e')) { newWidth += localDx; }
+            if (activeHandle.includes('w')) { newWidth -= localDx; }
+            if (activeHandle.includes('s')) { newHeight += localDy; }
+            if (activeHandle.includes('n')) { newHeight -= localDy; }
             
             if (newWidth > 5 && newHeight > 5) {
-                handleSelectionTransform({ x: newX, y: newY, width: newWidth, height: newHeight }, initialShapes, initialGroupBbox);
+                // By passing the original x/y, the translation part of handleSelectionTransform is zero.
+                // The transformation will be a pure scale around the shape's center.
+                handleSelectionTransform({ x, y, width: newWidth, height: newHeight }, initialShapes, initialGroupBbox);
             }
         }
     }, [activeHandle, handleSelectionTransform, getMousePosition]);
@@ -353,6 +346,45 @@ const Canvas: React.FC<CanvasProps> = ({
             initialGroupBbox: JSON.parse(JSON.stringify(boxShape)),
         };
     };
+    
+    const handleShapePointerDown = (e: React.MouseEvent | React.TouchEvent, shape: Shape) => {
+        if (activeTool !== ToolType.SELECT) return;
+        e.stopPropagation();
+    
+        const activeLayer = layers.find(l => l.id === activeLayerId);
+        if (!activeLayer) return;
+    
+        const targetShapeIds = shape.groupId
+            ? activeLayer.shapes.filter(s => s.groupId === shape.groupId).map(s => s.id)
+            : [shape.id];
+        
+        const isTargetFullySelected = targetShapeIds.every(id => selectedShapeIds.includes(id));
+    
+        if (isMultiSelectMode) {
+            if (isTargetFullySelected) {
+                setSelectedShapeIds(prev => prev.filter(id => !targetShapeIds.includes(id)));
+            } else {
+                setSelectedShapeIds(prev => [...new Set([...prev, ...targetShapeIds])]);
+            }
+        } else {
+            const isAdditive = e.ctrlKey || e.metaKey;
+            if (isAdditive) {
+                if (isTargetFullySelected) {
+                    setSelectedShapeIds(prev => prev.filter(id => !targetShapeIds.includes(id)));
+                } else {
+                    setSelectedShapeIds(prev => [...new Set([...prev, ...targetShapeIds])]);
+                }
+            } else {
+                if (!isTargetFullySelected) {
+                    setSelectedShapeIds(targetShapeIds);
+                } else {
+                    if (selectionBoxShape) {
+                        handleTransformStart(e, 'move', selectionBoxShape, selectedShapes);
+                    }
+                }
+            }
+        }
+    };
 
     return (
         <svg
@@ -387,28 +419,7 @@ const Canvas: React.FC<CanvasProps> = ({
                             shape={shape}
                             isSelected={selectedShapeIds.includes(shape.id) && layer.id === activeLayerId}
                             activeTool={activeTool}
-                            onPointerDown={(e: React.MouseEvent | React.TouchEvent) => {
-                                if (activeTool !== ToolType.SELECT) return;
-
-                                const shapeId = shape.id;
-                                const isAlreadySelected = selectedShapeIds.includes(shapeId);
-                                const isCtrlKey = 'ctrlKey' in e ? e.ctrlKey : e.metaKey;
-
-                                if (isCtrlKey) {
-                                    setSelectedShapeIds(prev =>
-                                        prev.includes(shapeId)
-                                            ? prev.filter(id => id !== shapeId)
-                                            : [...prev, shapeId]
-                                    );
-                                } else {
-                                    if (!isAlreadySelected) {
-                                        setSelectedShapeIds([shapeId]);
-                                    } else if (selectionBoxShape) {
-                                        handleTransformStart(e, 'move', selectionBoxShape, selectedShapes);
-                                    }
-                                }
-                                e.stopPropagation();
-                            }}
+                            onPointerDown={(e) => handleShapePointerDown(e, shape)}
                             onClick={(e: React.MouseEvent) => {
                                 e.stopPropagation();
                             }}
@@ -420,11 +431,29 @@ const Canvas: React.FC<CanvasProps> = ({
             {renderPreview()}
             {renderPolygonPreview()}
 
-            {selectionBoxShape && activeLayerId && layers.find(l => l.id === activeLayerId)?.isVisible && (
+            {isMultiSelectMode && selectedShapes.map(shape => {
+                const bbox = getShapeBoundingBox(shape);
+                return <rect
+                    key={`selection-${shape.id}`}
+                    x={bbox.x}
+                    y={bbox.y}
+                    width={bbox.width}
+                    height={bbox.height}
+                    transform={`rotate(${bbox.rotation}, ${bbox.cx}, ${bbox.cy})`}
+                    fill="none"
+                    stroke="rgba(59, 130, 246, 0.8)"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 2"
+                    style={{ pointerEvents: 'none' }}
+                />
+            })}
+
+            {!isMultiSelectMode && selectionBoxShape && activeLayerId && layers.find(l => l.id === activeLayerId)?.isVisible && (
                 <SelectionHandles 
                     shape={selectionBoxShape} 
                     selectedCount={selectedCount}
                     onPointerDown={(e, handle) => handleTransformStart(e, handle, selectionBoxShape, selectedShapes)}
+                    onMovePointerDown={(e) => handleTransformStart(e, 'move', selectionBoxShape, selectedShapes)}
                 />
             )}
         </svg>

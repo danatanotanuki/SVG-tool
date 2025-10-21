@@ -1,6 +1,8 @@
 import React from 'react';
 import type { Shape, RectangleShape, EllipseShape, PolygonShape, Tool } from '../types';
 import { ToolType } from '../types';
+import { getBoundingBox } from './SelectionHandles';
+import { getRoundedPolygonPath } from '../utils/polygonTools';
 
 interface ShapeComponentProps {
     shape: Shape;
@@ -20,10 +22,9 @@ const getTransform = (shape: Shape) => {
         cy = shape.y;
     } else if (shape.type === ToolType.POLYGON) {
         if (shape.points.length === 0) return '';
-        const xs = shape.points.map(p => p.x);
-        const ys = shape.points.map(p => p.y);
-        cx = xs.reduce((a, b) => a + b, 0) / xs.length;
-        cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+        const bbox = getBoundingBox(shape);
+        cx = bbox.cx;
+        cy = bbox.cy;
     } else {
         return '';
     }
@@ -53,7 +54,7 @@ const ShapeComponent: React.FC<ShapeComponentProps> = ({ shape, isSelected, acti
     switch (shape.type) {
         case ToolType.RECTANGLE:
             const rect = shape as RectangleShape;
-            return <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} {...commonProps} />;
+            return <rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx={rect.cornerRadius} ry={rect.cornerRadius} {...commonProps} />;
         
         case ToolType.CIRCLE:
             const ellipse = shape as EllipseShape;
@@ -61,6 +62,12 @@ const ShapeComponent: React.FC<ShapeComponentProps> = ({ shape, isSelected, acti
         
         case ToolType.POLYGON:
             const polygon = shape as PolygonShape;
+            if (polygon.cornerRadius && polygon.cornerRadius > 0) {
+                const pathData = getRoundedPolygonPath(polygon.points, polygon.cornerRadius);
+                // The transform for polygons is baked into the path, but rotation is separate.
+                // We re-apply the commonProps which include the rotation transform.
+                return <path d={pathData} {...commonProps} />;
+            }
             const pointsStr = polygon.points.map(p => `${p.x},${p.y}`).join(' ');
             return <polygon points={pointsStr} {...commonProps} />;
         

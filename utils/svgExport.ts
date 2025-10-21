@@ -1,6 +1,6 @@
-
 import type { Layer, Shape, RectangleShape, EllipseShape, PolygonShape, Point } from '../types';
 import { ToolType } from '../types';
+import { getRoundedPolygonPath } from './polygonTools';
 
 const getShapeSVG = (shape: Shape): string => {
     const getTransform = (s: Shape) => {
@@ -15,8 +15,12 @@ const getShapeSVG = (shape: Shape): string => {
             if (s.points.length === 0) return '';
             const xs = s.points.map(p => p.x);
             const ys = s.points.map(p => p.y);
-            cx = xs.reduce((a, b) => a + b, 0) / xs.length;
-            cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+            const minX = Math.min(...xs);
+            const minY = Math.min(...ys);
+            const width = Math.max(...xs) - minX;
+            const height = Math.max(...ys) - minY;
+            cx = minX + width / 2;
+            cy = minY + height / 2;
         }
         return s.rotation !== 0 ? `transform="rotate(${s.rotation} ${cx} ${cy})"` : '';
     };
@@ -26,13 +30,18 @@ const getShapeSVG = (shape: Shape): string => {
     switch (shape.type) {
         case ToolType.RECTANGLE:
             const rect = shape as RectangleShape;
-            return `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" ${commonProps} />`;
+            const cornerRadius = rect.cornerRadius ? `rx="${rect.cornerRadius}" ry="${rect.cornerRadius}"` : '';
+            return `<rect x="${rect.x}" y="${rect.y}" width="${rect.width}" height="${rect.height}" ${cornerRadius} ${commonProps} />`;
         case ToolType.CIRCLE:
             const ellipse = shape as EllipseShape;
             return `<ellipse cx="${ellipse.x}" cy="${ellipse.y}" rx="${ellipse.rx}" ry="${ellipse.ry}" ${commonProps} />`;
         case ToolType.POLYGON:
             const polygon = shape as PolygonShape;
             if (polygon.points.length === 0) return '';
+            if (polygon.cornerRadius && polygon.cornerRadius > 0) {
+                const pathData = getRoundedPolygonPath(polygon.points, polygon.cornerRadius);
+                return `<path d="${pathData}" ${commonProps} />`;
+            }
             const pointsStr = polygon.points.map(p => `${p.x},${p.y}`).join(' ');
             return `<polygon points="${pointsStr}" ${commonProps} />`;
         default:
@@ -98,7 +107,11 @@ const getRotatedBoundingBox = (shape: Shape): { minX: number, minY: number, maxX
         if (shape.points.length === 0) return { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
         const xs = shape.points.map(p => p.x);
         const ys = shape.points.map(p => p.y);
-        center = { x: xs.reduce((a, b) => a + b, 0) / xs.length, y: ys.reduce((a, b) => a + b, 0) / ys.length };
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+        const width = Math.max(...xs) - minX;
+        const height = Math.max(...ys) - minY;
+        center = { x: minX + width / 2, y: minY + height / 2 };
         points = shape.points;
     }
 

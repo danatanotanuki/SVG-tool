@@ -1,4 +1,3 @@
-
 export interface Point {
     x: number;
     y: number;
@@ -25,12 +24,14 @@ interface BaseShape extends ShapeStyle {
     x: number;
     y: number;
     rotation: number;
+    groupId?: string;
 }
 
 export interface RectangleShape extends BaseShape {
     type: ToolType.RECTANGLE;
     width: number;
     height: number;
+    cornerRadius?: number;
 }
 
 export interface EllipseShape extends BaseShape {
@@ -42,6 +43,7 @@ export interface EllipseShape extends BaseShape {
 export interface PolygonShape extends BaseShape {
     type: ToolType.POLYGON;
     points: Point[];
+    cornerRadius?: number;
 }
 
 export type Shape = RectangleShape | EllipseShape | PolygonShape;

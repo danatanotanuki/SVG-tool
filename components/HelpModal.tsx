@@ -19,7 +19,7 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                 
                 <div className="space-y-6 text-gray-700">
                     <Section title="Tools">
-                        <ToolItem icon={<MousePointerIcon />} name="Select Tool (V)" description="Select, move, resize, and rotate shapes. Click on a shape to select it. Hold Ctrl (or Cmd on Mac) and click to select multiple shapes. The selection box turns red for multi-selections." />
+                        <ToolItem icon={<MousePointerIcon />} name="Select Tool (V)" description="Select, move, resize, and rotate shapes. Click on a shape to select it. Hold Ctrl (or Cmd on Mac) and click to select multiple shapes. Use the 'Multi-select Mode' in the Action Panel to select multiple shapes without holding Ctrl/Cmd." />
                         <ToolItem icon={<RectangleIcon />} name="Rectangle Tool (R)" description="Click and drag on the canvas to draw a rectangle." />
                         <ToolItem icon={<CircleIcon />} name="Circle Tool (C)" description="Click and drag on the canvas to draw a circle from its center." />
                         <ToolItem icon={<PolygonIcon />} name="Polygon Tool (P)" description="Click on the canvas to place vertices. Press 'Enter' to complete the shape (must have at least 3 vertices). Press 'Escape' to cancel drawing." />
@@ -28,9 +28,11 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     <Section title="Editing Shapes">
                          <p>Once a shape is selected with the <strong>Select Tool</strong>:</p>
                         <ul className="list-disc list-inside mt-2 space-y-1">
-                            <li><strong>Move:</strong> Click and drag any part of a selected shape to move the entire selection. If you click an unselected shape, it will become selected; click it again to drag.</li>
-                            <li><strong>Resize:</strong> Drag the square handles on the corners and sides of the selection box. Hold <strong>Shift</strong> while dragging to maintain the original aspect ratio.</li>
-                            <li><strong>Rotate:</strong> Drag the circular handle at the top of the selection box.</li>
+                            <li><strong>Move:</strong> Click and drag any part of a selected shape or group to move it. (Note: Movement is disabled in Multi-select Mode).</li>
+                            <li><strong>Resize:</strong> Drag the square handles on the sides of the selection box to change its width or height.</li>
+                            <li><strong>Multi-select Mode:</strong> Click the 'Multi-select' button in the Action Panel to enter a mode where you can click to add or remove shapes from a temporary selection.</li>
+                            <li><strong>Group (Ctrl+G):</strong> While in Multi-select Mode with 2 or more shapes selected, click the 'Group' button to combine them into a single, persistent object. This will automatically exit Multi-select Mode.</li>
+                            <li><strong>Ungroup (Ctrl+Shift+G):</strong> Select a group and click the 'Ungroup' button to break it back into its individual component shapes.</li>
                             <li><strong>Duplicate:</strong> Click the duplicate button in the right-hand panel or press 'Ctrl+D'.</li>
                             <li><strong>Delete:</strong> Click the trash icon in the right-hand panel or press the 'Delete' or 'Backspace' key.</li>
                         </ul>
@@ -38,18 +40,18 @@ const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
                     
                     <Section title="General Features">
                         <p><strong>Undo/Redo:</strong> Use the undo and redo buttons in the header, or press 'Ctrl+Z' and 'Ctrl+Y' to step through your action history.</p>
-                        <p><strong>Persistent Selection:</strong> Your selection is maintained even when clicking on the empty canvas. To clear your selection, use the "Deselect All" button in the Action Panel.</p>
+                        <p><strong>Deselect All:</strong> To clear your selection, use the "Deselect All" button in the Action Panel or press 'Escape'. This will also exit Multi-select Mode.</p>
                     </Section>
 
                     <Section title="Panels">
-                        <p><strong>Action Panel:</strong> Quickly duplicate, delete, or deselect the currently selected shape(s).</p>
+                        <p><strong>Action Panel:</strong> Quickly duplicate, delete, group, ungroup or deselect the currently selected shape(s). Also contains the Multi-select Mode toggle.</p>
                         <p><strong>Properties Panel:</strong> When a shape is selected, you can change its fill color, stroke color, and stroke width. If no shape is selected, this panel sets the default style for new shapes. These changes apply to all selected shapes.</p>
                         <p><strong>Layers Panel:</strong> Create new layers, delete layers, reorder them, and toggle their visibility. Your drawings are added to the currently active layer.</p>
                         <p><strong>Background Panel:</strong> Load a local image as a tracing reference. You can adjust its opacity.</p>
                     </Section>
 
                      <Section title="Exporting">
-                        <p>Click the "Save as SVG" button in the header to download your entire visible drawing as an SVG file.</p>
+                        <p>Click the "Save" button in the header to download your entire visible drawing as an SVG file.</p>
                     </Section>
                 </div>
             </div>

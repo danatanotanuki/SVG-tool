@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { Tool } from '../types';
 import { ToolType } from '../types';

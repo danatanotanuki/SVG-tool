@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Shape, Point, EllipseShape } from '../types';
 import { ToolType } from '../types';
+import { MoveIcon } from './icons/Icons';
 
 export type HandleType = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'rotate' | 'move';
 
@@ -42,9 +43,10 @@ interface SelectionHandlesProps {
     shape: Shape;
     selectedCount: number;
     onPointerDown: (event: React.MouseEvent | React.TouchEvent, handle: HandleType) => void;
+    onMovePointerDown: (event: React.MouseEvent | React.TouchEvent) => void;
 }
 
-const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCount, onPointerDown }) => {
+const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCount, onPointerDown, onMovePointerDown }) => {
     const bbox = getBoundingBox(shape);
     const handleSize = 10;
     const halfHandle = handleSize / 2;
@@ -52,18 +54,16 @@ const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCoun
     const strokeColor = selectedCount > 1 ? 'red' : 'blue';
 
     const handles: { type: HandleType, x: number, y: number, cursor: string }[] = [
-        { type: 'nw', x: bbox.x - halfHandle, y: bbox.y - halfHandle, cursor: 'nwse-resize' },
         { type: 'n', x: bbox.cx - halfHandle, y: bbox.y - halfHandle, cursor: 'ns-resize' },
-        { type: 'ne', x: bbox.x + bbox.width - halfHandle, y: bbox.y - halfHandle, cursor: 'nesw-resize' },
         { type: 'e', x: bbox.x + bbox.width - halfHandle, y: bbox.cy - halfHandle, cursor: 'ew-resize' },
-        { type: 'se', x: bbox.x + bbox.width - halfHandle, y: bbox.y + bbox.height - halfHandle, cursor: 'nwse-resize' },
         { type: 's', x: bbox.cx - halfHandle, y: bbox.y + bbox.height - halfHandle, cursor: 'ns-resize' },
-        { type: 'sw', x: bbox.x - halfHandle, y: bbox.y + bbox.height - halfHandle, cursor: 'nesw-resize' },
         { type: 'w', x: bbox.x - halfHandle, y: bbox.cy - halfHandle, cursor: 'ew-resize' },
-        { type: 'rotate', x: bbox.cx - halfHandle, y: bbox.y - 30 - halfHandle, cursor: 'crosshair' },
     ];
     
     const rotationCenter = { x: bbox.cx, y: bbox.cy };
+
+    const moveIconSize = 20;
+    const moveIconPadding = 16;
 
     return (
         <g transform={`rotate(${shape.rotation}, ${rotationCenter.x}, ${rotationCenter.y})`}>
@@ -78,7 +78,6 @@ const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCoun
                 strokeDasharray="4 2"
                 style={{ pointerEvents: 'none' }}
             />
-            <line x1={bbox.cx} y1={bbox.y} x2={bbox.cx} y2={bbox.y - 30} stroke={strokeColor} strokeWidth="1" />
             {handles.map(h => {
                 const handleProps = {
                     key: h.type,
@@ -93,8 +92,27 @@ const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCoun
                     onMouseDown: (e: React.MouseEvent) => onPointerDown(e, h.type),
                     onTouchStart: (e: React.TouchEvent) => onPointerDown(e, h.type),
                 };
-                return h.type === 'rotate' ? <circle cx={h.x + halfHandle} cy={h.y + halfHandle} r={halfHandle + 2} {...handleProps} /> : <rect {...handleProps} />;
+                return <rect {...handleProps} />;
              })}
+             {selectedCount > 0 && (
+                <g
+                    onMouseDown={(e) => { e.stopPropagation(); onMovePointerDown(e); }}
+                    onTouchStart={(e) => { e.stopPropagation(); onMovePointerDown(e); }}
+                    style={{ cursor: 'move' }}
+                    // Position the icon group centered horizontally, and above the top edge of the bbox
+                    transform={`translate(${bbox.cx}, ${bbox.y - moveIconPadding - (moveIconSize / 2)})`}
+                >
+                    {/* Background circle for easier interaction and visual separation */}
+                    <circle r={moveIconSize / 2 + 4} fill="white" stroke={strokeColor} strokeWidth="1" />
+                    <MoveIcon
+                        x={-moveIconSize / 2}
+                        y={-moveIconSize / 2}
+                        width={moveIconSize}
+                        height={moveIconSize}
+                        stroke={strokeColor}
+                    />
+                </g>
+            )}
         </g>
     );
 };
