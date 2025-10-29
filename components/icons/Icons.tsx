@@ -1,6 +1,20 @@
+
 import React from 'react';
 
 type IconProps = React.SVGProps<SVGSVGElement>;
+
+export const CheckIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>
+);
+
+export const XIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+);
 
 export const MousePointerIcon: React.FC<IconProps> = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -13,6 +27,40 @@ export const MultiSelectIcon: React.FC<IconProps> = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="8" y="8" width="12" height="12" rx="2" ry="2"></rect>
         <path d="M4 16V4h12"></path>
+    </svg>
+);
+
+export const VertexEditIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.5 2.5l-6 6" />
+      <path d="M14.5 7.5l6 6" />
+      <path d="M2.5 9.5l6 6" />
+      <path d="M7.5 14.5l6 6" />
+      <circle cx="4" cy="4" r="1" />
+      <circle cx="12" cy="4" r="1" />
+      <circle cx="20" cy="4" r="1" />
+      <circle cx="4" cy="12" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="20" cy="12" r="1" />
+      <circle cx="4" cy="20" r="1" />
+      <circle cx="12" cy="20" r="1" />
+      <circle cx="20" cy="20" r="1" />
+    </svg>
+);
+
+export const HorizontalSnapIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <circle cx="6" cy="12" r="2" fill="currentColor"></circle>
+      <circle cx="18" cy="12" r="2" fill="currentColor"></circle>
+    </svg>
+);
+
+export const VerticalSnapIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="3" x2="12" y2="21"></line>
+      <circle cx="12" cy="6" r="2" fill="currentColor"></circle>
+      <circle cx="12" cy="18" r="2" fill="currentColor"></circle>
     </svg>
 );
 
@@ -206,5 +254,94 @@ export const CornerRadiusIcon: React.FC<IconProps> = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M19 12c0-3.87-3.13-7-7-7H5v7c3.87 0 7 3.13 7 7h7v-7z"/>
         <path d="M5 19V5h7"/>
+    </svg>
+);
+
+export const ZoomInIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        <line x1="11" y1="8" x2="11" y2="14"></line>
+        <line x1="8" y1="11" x2="14" y2="11"></line>
+    </svg>
+);
+
+export const ZoomOutIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        <line x1="8" y1="11" x2="14" y2="11"></line>
+    </svg>
+);
+
+export const ZoomResetIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 3L8 8M3 8L8 3"/>
+        <path d="M21 21L16 16M21 16L16 21"/>
+        <path d="M8 21L3 16M3 21L8 16"/>
+        <path d="M16 3L21 8M16 8L21 3"/>
+    </svg>
+);
+
+export const ArtboardIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" strokeDasharray="2 2"></rect>
+        <path d="M8 8h8v8H8z"/>
+    </svg>
+);
+
+export const SvgImportIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="17 8 12 3 7 8"></polyline>
+        <line x1="12" y1="3" x2="12" y2="15"></line>
+    </svg>
+);
+
+export const AlignLeftIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="4" y1="21" x2="4" y2="3"/>
+        <rect x="8" y="6" width="12" height="4" rx="1"/>
+        <rect x="8" y="14" width="8" height="4" rx="1"/>
+    </svg>
+);
+
+export const AlignCenterHorizontalIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="21" x2="12" y2="3"/>
+        <rect x="6" y="6" width="12" height="4" rx="1"/>
+        <rect x="8" y="14" width="8" height="4" rx="1"/>
+    </svg>
+);
+
+export const AlignRightIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="20" y1="21" x2="20" y2="3"/>
+        <rect x="4" y="6" width="12" height="4" rx="1"/>
+        <rect x="8" y="14" width="8" height="4" rx="1"/>
+    </svg>
+);
+
+export const AlignTopIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="3" y1="4" x2="21" y2="4"/>
+        <rect x="6" y="8" width="4" height="12" rx="1"/>
+        <rect x="14" y="8" width="4" height="8" rx="1"/>
+    </svg>
+);
+
+export const AlignCenterVerticalIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <rect x="6" y="6" width="4" height="12" rx="1"/>
+        <rect x="14" y="8" width="4" height="8" rx="1"/>
+    </svg>
+);
+
+export const AlignBottomIcon: React.FC<IconProps> = (props) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="3" y1="20" x2="21" y2="20"/>
+        <rect x="6" y="4" width="4" height="12" rx="1"/>
+        <rect x="14" y="8" width="4" height="8" rx="1"/>
     </svg>
 );

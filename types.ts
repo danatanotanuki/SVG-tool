@@ -54,3 +54,16 @@ export interface Layer {
     shapes: Shape[];
     isVisible: boolean;
 }
+
+export interface Artboard {
+    width: number;
+    height: number;
+    aspectRatio: string;
+}
+
+export interface ViewBox {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}

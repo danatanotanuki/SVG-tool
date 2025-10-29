@@ -1,8 +1,11 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { DuplicateIcon, TrashIcon, DeselectIcon, SaveIcon, RotateCwIcon, ExpandIcon, GroupIcon, UngroupIcon, MultiSelectIcon, CornerRadiusIcon } from './icons/Icons';
+import { DuplicateIcon, TrashIcon, DeselectIcon, SaveIcon, RotateCwIcon, ExpandIcon, GroupIcon, UngroupIcon, MultiSelectIcon, CornerRadiusIcon, AlignLeftIcon, AlignCenterHorizontalIcon, AlignRightIcon, AlignTopIcon, AlignCenterVerticalIcon, AlignBottomIcon, VertexEditIcon, HorizontalSnapIcon, VerticalSnapIcon } from './icons/Icons';
 
 type ActiveSlider = 'rotate' | 'scale' | 'cornerRadius' | null;
+type AlignType = 'left' | 'h-center' | 'right' | 'top' | 'v-center' | 'bottom';
+
 
 interface ActionPanelProps {
     onDuplicate: () => void;
@@ -25,6 +28,12 @@ interface ActionPanelProps {
     onToggleMultiSelectMode: () => void;
     canApplyCornerRadius: boolean;
     maxCornerRadius: number;
+    onAlign: (alignType: AlignType) => void;
+    canEnterVertexEditMode: boolean;
+    editingShapeId: string | null;
+    onToggleVertexEditMode: () => void;
+    selectedVertex: { shapeId: string; vertexIndex: number } | null;
+    onVertexSnap: (snapType: 'horizontal' | 'vertical') => void;
 }
 
 const ActionButton: React.FC<{
@@ -135,7 +144,9 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
     onSliderInteractionStart, onSliderInteractionEnd,
     onGroup, onUngroup, canGroup, canUngroup,
     isMultiSelectMode, onToggleMultiSelectMode,
-    canApplyCornerRadius, maxCornerRadius
+    canApplyCornerRadius, maxCornerRadius, onAlign,
+    canEnterVertexEditMode, editingShapeId, onToggleVertexEditMode,
+    selectedVertex, onVertexSnap
 }) => {
     const isSelectionEmpty = selectedCount === 0;
 
@@ -157,13 +168,16 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
                 <ActionButton label="Ungroup (Ctrl+Shift+G)" onClick={onUngroup} disabled={!canUngroup}>
                     <UngroupIcon className="w-5 h-5" />
                 </ActionButton>
-                <ActionButton label="Rotate" onClick={() => onToggleSlider('rotate')} disabled={isSelectionEmpty} isActive={activeSlider === 'rotate'}>
+                 <ActionButton label="Edit Vertices" onClick={onToggleVertexEditMode} disabled={!canEnterVertexEditMode} isActive={!!editingShapeId}>
+                    <VertexEditIcon className="w-5 h-5" />
+                </ActionButton>
+                <ActionButton label="Rotate" onClick={() => onToggleSlider('rotate')} disabled={isSelectionEmpty || !!editingShapeId} isActive={activeSlider === 'rotate'}>
                     <RotateCwIcon className="w-5 h-5" />
                 </ActionButton>
-                <ActionButton label="Scale" onClick={() => onToggleSlider('scale')} disabled={isSelectionEmpty} isActive={activeSlider === 'scale'}>
+                <ActionButton label="Scale" onClick={() => onToggleSlider('scale')} disabled={isSelectionEmpty || !!editingShapeId} isActive={activeSlider === 'scale'}>
                     <ExpandIcon className="w-5 h-5" />
                 </ActionButton>
-                 <ActionButton label="Corner Radius" onClick={() => onToggleSlider('cornerRadius')} disabled={isSelectionEmpty || !canApplyCornerRadius} isActive={activeSlider === 'cornerRadius'}>
+                 <ActionButton label="Corner Radius" onClick={() => onToggleSlider('cornerRadius')} disabled={isSelectionEmpty || !canApplyCornerRadius || !!editingShapeId} isActive={activeSlider === 'cornerRadius'}>
                     <CornerRadiusIcon className="w-5 h-5" />
                 </ActionButton>
                 <ActionButton label="Delete (Del)" onClick={onDelete} disabled={isSelectionEmpty}>
@@ -176,6 +190,30 @@ const ActionPanel: React.FC<ActionPanelProps> = ({
                     <SaveIcon className="w-5 h-5" />
                 </ActionButton>
             </div>
+            
+            {editingShapeId && (
+                <div className="pt-4 border-t mt-4">
+                     <p className="text-sm text-gray-600 font-semibold mb-2">Vertex Snap</p>
+                     <div className="flex flex-wrap gap-2">
+                        <ActionButton label="Horizontal Snap" onClick={() => onVertexSnap('horizontal')} disabled={!selectedVertex}><HorizontalSnapIcon className="w-5 h-5"/></ActionButton>
+                        <ActionButton label="Vertical Snap" onClick={() => onVertexSnap('vertical')} disabled={!selectedVertex}><VerticalSnapIcon className="w-5 h-5"/></ActionButton>
+                     </div>
+                </div>
+            )}
+
+            {(selectedCount > 1 && !editingShapeId) && (
+                <div className="pt-4 border-t mt-4">
+                     <p className="text-sm text-gray-600 font-semibold mb-2">Align</p>
+                     <div className="flex flex-wrap gap-2">
+                        <ActionButton label="Align Left" onClick={() => onAlign('left')} disabled={false}><AlignLeftIcon className="w-5 h-5"/></ActionButton>
+                        <ActionButton label="Align Center Horizontally" onClick={() => onAlign('h-center')} disabled={false}><AlignCenterHorizontalIcon className="w-5 h-5"/></ActionButton>
+                        <ActionButton label="Align Right" onClick={() => onAlign('right')} disabled={false}><AlignRightIcon className="w-5 h-5"/></ActionButton>
+                        <ActionButton label="Align Top" onClick={() => onAlign('top')} disabled={false}><AlignTopIcon className="w-5 h-5"/></ActionButton>
+                        <ActionButton label="Align Center Vertically" onClick={() => onAlign('v-center')} disabled={false}><AlignCenterVerticalIcon className="w-5 h-5"/></ActionButton>
+                        <ActionButton label="Align Bottom" onClick={() => onAlign('bottom')} disabled={false}><AlignBottomIcon className="w-5 h-5"/></ActionButton>
+                     </div>
+                </div>
+            )}
 
             {activeSlider === 'rotate' && (
                 <TransformSlider

@@ -46,7 +46,7 @@ const SaveSvgModal: React.FC<SaveSvgModalProps> = ({ isOpen, onClose, onSave }) 
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full p-2 border border-gray-300 rounded-md bg-gray-100 focus:ring-blue-500 focus:border-blue-500"
                             placeholder="e.g., A collection of various shapes"
                             autoFocus
                         />

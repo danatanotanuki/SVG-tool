@@ -1,8 +1,10 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import type { Shape, Layer, Tool, Point, ShapeStyle, PolygonShape, EllipseShape } from '../types';
+import type { Shape, Layer, Tool, Point, ShapeStyle, PolygonShape, EllipseShape, Artboard, ViewBox } from '../types';
 import { ToolType, RectangleShape } from '../types';
 import ShapeComponent from './ShapeComponent';
 import SelectionHandles, { getBoundingBox as getShapeBoundingBox, BBox, HandleType } from './SelectionHandles';
+import { getVertices, getShapeAABB } from '../utils/geometry';
+import { CheckIcon, XIcon } from './icons/Icons';
 
 interface CanvasProps {
     layers: Layer[];
@@ -13,17 +15,27 @@ interface CanvasProps {
     activeTool: Tool;
     defaultStyles: ShapeStyle;
     backgroundImage: { src: string; opacity: number } | null;
+    artboard: Artboard | null;
     updateShapes: (updates: { id: string, updates: Partial<Shape> }[]) => void;
     selectedCount: number;
     beginBatchUpdate: () => void;
     endBatchUpdate: () => void;
     isMultiSelectMode: boolean;
+    viewBox: ViewBox;
+    setViewBox: React.Dispatch<React.SetStateAction<ViewBox>>;
+    setZoom: React.Dispatch<React.SetStateAction<number>>;
+    svgSizeRef: React.MutableRefObject<{ width: number, height: number }>;
+    editingShapeId: string | null;
+    setEditingShapeId: (id: string | null) => void;
+    selectedVertex: { shapeId: string; vertexIndex: number; } | null;
+    setSelectedVertex: (vertex: { shapeId: string; vertexIndex: number; } | null) => void;
 }
 
 const Canvas: React.FC<CanvasProps> = ({
     layers, activeLayerId, setLayers, selectedShapeIds,
-    setSelectedShapeIds, activeTool, defaultStyles, backgroundImage, updateShapes,
-    selectedCount, beginBatchUpdate, endBatchUpdate, isMultiSelectMode
+    setSelectedShapeIds, activeTool, defaultStyles, backgroundImage, artboard,
+    updateShapes, selectedCount, beginBatchUpdate, endBatchUpdate, isMultiSelectMode,
+    viewBox, setViewBox, setZoom, svgSizeRef, editingShapeId, setEditingShapeId, selectedVertex, setSelectedVertex
 }) => {
     const svgRef = useRef<SVGSVGElement>(null);
     const [drawing, setDrawing] = useState(false);
@@ -40,23 +52,56 @@ const Canvas: React.FC<CanvasProps> = ({
         initialGroupBbox: Shape;
     } | null>(null);
 
+    const [draggedVertex, setDraggedVertex] = useState<{ shapeId: string; vertexIndex: number; adjacentIndices: number[] } | null>(null);
+    const initialVertexDragState = useRef<{ shape: Shape } | null>(null);
+
+    const [isPanning, setIsPanning] = useState(false);
+    const panStartPoint = useRef({ x: 0, y: 0 });
+    const [panMode, setPanMode] = useState(false);
+
+    const [marqueeRect, setMarqueeRect] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
+    const isMarqueeSelecting = useRef(false);
+    const marqueeStart = useRef<Point>({x: 0, y: 0});
+
+    useEffect(() => {
+        setPanMode(false);
+    }, [activeTool]);
+
+    useEffect(() => {
+        const svgEl = svgRef.current;
+        if (svgEl) {
+            const resizeObserver = new ResizeObserver(entries => {
+                const { width, height } = entries[0].contentRect;
+                svgSizeRef.current = { width, height };
+                if (viewBox.width === 1000 && viewBox.height === 800) { // Initial setup
+                    setViewBox({x: 0, y: 0, width, height});
+                }
+            });
+            resizeObserver.observe(svgEl);
+            return () => resizeObserver.disconnect();
+        }
+    }, [setViewBox, svgSizeRef, viewBox]);
+
     const getMousePosition = useCallback((e: MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent): Point => {
         if (!svgRef.current) return { x: 0, y: 0 };
-        const CTM = svgRef.current.getScreenCTM();
-        if (!CTM) return { x: 0, y: 0 };
+        const svg = svgRef.current;
+        const rect = svg.getBoundingClientRect();
 
         const evt = 'nativeEvent' in e ? e.nativeEvent : e;
-        const point = 'touches' in evt && evt.touches.length > 0
+        const clientPoint = 'touches' in evt && evt.touches.length > 0
             ? evt.touches[0]
             : 'changedTouches' in evt && evt.changedTouches.length > 0
                 ? evt.changedTouches[0]
                 : evt as MouseEvent;
 
+        const scaleX = viewBox.width / rect.width;
+        const scaleY = viewBox.height / rect.height;
+
         return {
-            x: (point.clientX - CTM.e) / CTM.a,
-            y: (point.clientY - CTM.f) / CTM.d,
+            x: (clientPoint.clientX - rect.left) * scaleX + viewBox.x,
+            y: (clientPoint.clientY - rect.top) * scaleY + viewBox.y,
         };
-    }, []);
+    }, [viewBox]);
 
 
     const addShapeToLayer = useCallback((shape: Shape) => {
@@ -68,11 +113,33 @@ const Canvas: React.FC<CanvasProps> = ({
         );
     }, [activeLayerId, setLayers]);
 
+    const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+        // Stop propagation to prevent shape double click from triggering this
+        if (e.target === svgRef.current) {
+            setPanMode(prev => !prev);
+        }
+    }, []);
+
     const handleDrawStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
         if ('touches' in e) e.preventDefault();
         
         const pos = getMousePosition(e);
+
+        if (panMode) {
+             if ('button' in e && e.button !== 0) return; // Only pan with left-click or touch
+            setIsPanning(true);
+            const evt = 'nativeEvent' in e ? e.nativeEvent : e;
+            const clientPoint = 'touches' in evt && evt.touches.length > 0 ? evt.touches[0] : evt as MouseEvent;
+            panStartPoint.current = { x: clientPoint.clientX, y: clientPoint.clientY };
+            return;
+        }
+
         if (activeTool === ToolType.SELECT) {
+            if (isMultiSelectMode) {
+                isMarqueeSelecting.current = true;
+                marqueeStart.current = pos;
+                setMarqueeRect({ x: pos.x, y: pos.y, width: 0, height: 0 });
+            }
             return;
         }
 
@@ -81,15 +148,74 @@ const Canvas: React.FC<CanvasProps> = ({
         setDrawing(true);
         setStartPoint(pos);
         setCurrentPoint(pos);
-    }, [activeTool, getMousePosition]);
+    }, [activeTool, getMousePosition, panMode, isMultiSelectMode]);
     
     const handleDrawMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+        if (isPanning) {
+            if ('touches' in e) e.preventDefault();
+            const evt = 'nativeEvent' in e ? e.nativeEvent : e;
+            const clientPoint = 'touches' in evt && evt.touches.length > 0 ? evt.touches[0] : evt as MouseEvent;
+
+            const dx = clientPoint.clientX - panStartPoint.current.x;
+            const dy = clientPoint.clientY - panStartPoint.current.y;
+            panStartPoint.current = { x: clientPoint.clientX, y: clientPoint.clientY };
+
+            const scaleX = viewBox.width / svgSizeRef.current.width;
+            const scaleY = viewBox.height / svgSizeRef.current.height;
+
+            setViewBox(prev => ({ ...prev, x: prev.x - dx * scaleX, y: prev.y - dy * scaleY }));
+            return;
+        }
+
+        if (isMarqueeSelecting.current) {
+            const currentPos = getMousePosition(e);
+            const startPos = marqueeStart.current;
+            const x = Math.min(startPos.x, currentPos.x);
+            const y = Math.min(startPos.y, currentPos.y);
+            const width = Math.abs(startPos.x - currentPos.x);
+            const height = Math.abs(startPos.y - currentPos.y);
+            setMarqueeRect({ x, y, width, height });
+            return;
+        }
+
         if (!drawing) return;
         if ('touches' in e) e.preventDefault();
         setCurrentPoint(getMousePosition(e));
-    }, [drawing, getMousePosition]);
+    }, [drawing, getMousePosition, isPanning, setViewBox, viewBox.width, viewBox.height, svgSizeRef]);
 
     const handleDrawEnd = useCallback(() => {
+        if (isPanning) {
+            setIsPanning(false);
+            return;
+        }
+
+        if (isMarqueeSelecting.current && marqueeRect) {
+            const activeLayer = layers.find(l => l.id === activeLayerId);
+            if (activeLayer) {
+                const selectedIds = activeLayer.shapes.filter(shape => {
+                    const aabb = getShapeAABB(shape);
+                    const shapeBBox = {
+                        x: aabb.minX,
+                        y: aabb.minY,
+                        width: aabb.maxX - aabb.minX,
+                        height: aabb.maxY - aabb.minY,
+                    };
+
+                    // AABB intersection test
+                    return marqueeRect.x < shapeBBox.x + shapeBBox.width &&
+                           marqueeRect.x + marqueeRect.width > shapeBBox.x &&
+                           marqueeRect.y < shapeBBox.y + shapeBBox.height &&
+                           marqueeRect.y + marqueeRect.height > shapeBBox.y;
+                }).map(shape => shape.id);
+                
+                setSelectedShapeIds(selectedIds);
+            }
+            
+            isMarqueeSelecting.current = false;
+            setMarqueeRect(null);
+            return;
+        }
+
         if (!drawing) return;
         setDrawing(false);
 
@@ -116,37 +242,88 @@ const Canvas: React.FC<CanvasProps> = ({
         if (newShape) {
             addShapeToLayer(newShape);
         }
-    }, [drawing, activeTool, startPoint, currentPoint, defaultStyles, addShapeToLayer]);
+    }, [drawing, isPanning, activeTool, startPoint, currentPoint, defaultStyles, addShapeToLayer, layers, activeLayerId, marqueeRect, setSelectedShapeIds]);
     
     const handleCanvasClick = (e: React.MouseEvent) => {
         if (activeTool !== ToolType.POLYGON) return;
         const pos = getMousePosition(e);
         setPolygonPoints([...polygonPoints, pos]);
     };
-    
+
+    const handleCompletePolygon = useCallback(() => {
+        if (polygonPoints.length < 3) return;
+        const id = `shape-${Date.now()}`;
+        const newShape: PolygonShape = {
+            id, type: ToolType.POLYGON,
+            points: polygonPoints,
+            x: 0, y: 0,
+            rotation: 0,
+            ...defaultStyles
+        };
+        addShapeToLayer(newShape);
+        setPolygonPoints([]);
+    }, [polygonPoints, defaultStyles, addShapeToLayer]);
+
+    const handleCancelPolygon = useCallback(() => {
+        setPolygonPoints([]);
+    }, []);
+
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (activeTool === ToolType.POLYGON) {
-                if (e.key === 'Enter' && polygonPoints.length >= 3) {
-                    const id = `shape-${Date.now()}`;
-                    const newShape: PolygonShape = {
-                        id, type: ToolType.POLYGON,
-                        points: polygonPoints,
-                        x: 0, y: 0,
-                        rotation: 0,
-                        ...defaultStyles
-                    };
-                    addShapeToLayer(newShape);
-                    setPolygonPoints([]);
+            if (e.key === ' ' && activeTool === ToolType.SELECT && !isPanning) {
+                e.preventDefault();
+                setIsPanning(true);
+                document.body.style.cursor = 'grabbing';
+            }
+             if (activeTool === ToolType.POLYGON) {
+                if (e.key === 'Enter') {
+                    handleCompletePolygon();
                 } else if (e.key === 'Escape') {
-                    setPolygonPoints([]);
+                    handleCancelPolygon();
                 }
             }
         };
 
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.key === ' ') {
+                setIsPanning(false);
+                document.body.style.cursor = 'default';
+            }
+        };
+
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeTool, polygonPoints, defaultStyles, addShapeToLayer]);
+        window.addEventListener('keyup', handleKeyUp);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+        };
+    }, [activeTool, handleCompletePolygon, handleCancelPolygon, isPanning]);
+
+    const handleWheel = (e: React.WheelEvent) => {
+        e.preventDefault();
+        const zoomFactor = 1.1;
+        const { deltaY } = e;
+        const mousePos = getMousePosition(e);
+        
+        let newWidth, newHeight;
+        if (deltaY < 0) { // Zoom in
+            newWidth = viewBox.width / zoomFactor;
+            newHeight = viewBox.height / zoomFactor;
+        } else { // Zoom out
+            newWidth = viewBox.width * zoomFactor;
+            newHeight = viewBox.height * zoomFactor;
+        }
+        
+        const newX = mousePos.x - (mousePos.x - viewBox.x) * (newWidth / viewBox.width);
+        const newY = mousePos.y - (mousePos.y - viewBox.y) * (newHeight / viewBox.height);
+        
+        const svgRect = svgRef.current?.getBoundingClientRect();
+        if (svgRect) {
+            setViewBox({ x: newX, y: newY, width: newWidth, height: newHeight });
+            setZoom(svgRect.width / newWidth);
+        }
+    };
 
 
     const renderPreview = () => {
@@ -172,6 +349,51 @@ const Canvas: React.FC<CanvasProps> = ({
         if (activeTool !== ToolType.POLYGON || polygonPoints.length === 0) return null;
         const pointsStr = polygonPoints.map(p => `${p.x},${p.y}`).join(' ');
         return <polyline points={pointsStr} fill="none" stroke="rgba(0,0,255,0.5)" strokeWidth="1" />;
+    };
+    
+    const renderPolygonControls = () => {
+        if (activeTool !== ToolType.POLYGON || polygonPoints.length === 0) return null;
+        
+        const firstPoint = polygonPoints[0];
+        const canComplete = polygonPoints.length >= 3;
+        const buttonSize = 28;
+        const iconSize = 16;
+        const offset = buttonSize / 2 + 10;
+        
+        return (
+            <g transform={`translate(${firstPoint.x}, ${firstPoint.y})`}>
+                <g 
+                    transform={`translate(${-offset}, ${-offset})`}
+                    style={{ cursor: canComplete ? 'pointer' : 'not-allowed' }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (canComplete) handleCompletePolygon();
+                    }}
+                >
+                    <circle r={buttonSize/2} fill="white" stroke="#ccc" />
+                    <CheckIcon 
+                        width={iconSize} height={iconSize} 
+                        x={-iconSize/2} y={-iconSize/2} 
+                        className={canComplete ? "text-green-600" : "text-gray-400"}
+                    />
+                </g>
+                 <g 
+                    transform={`translate(${offset}, ${-offset})`}
+                    style={{ cursor: 'pointer' }}
+                     onClick={(e) => {
+                        e.stopPropagation();
+                        handleCancelPolygon();
+                    }}
+                >
+                    <circle r={buttonSize/2} fill="white" stroke="#ccc" />
+                     <XIcon 
+                        width={iconSize} height={iconSize} 
+                        x={-iconSize/2} y={-iconSize/2} 
+                        className="text-red-600"
+                    />
+                </g>
+            </g>
+        );
     };
 
     const selectedShapes = layers
@@ -348,7 +570,7 @@ const Canvas: React.FC<CanvasProps> = ({
     };
     
     const handleShapePointerDown = (e: React.MouseEvent | React.TouchEvent, shape: Shape) => {
-        if (activeTool !== ToolType.SELECT) return;
+        if (activeTool !== ToolType.SELECT || isPanning || editingShapeId || panMode) return;
         e.stopPropagation();
     
         const activeLayer = layers.find(l => l.id === activeLayerId);
@@ -386,10 +608,111 @@ const Canvas: React.FC<CanvasProps> = ({
         }
     };
 
+    const handleShapeDoubleClick = (e: React.MouseEvent, shape: Shape) => {
+        e.stopPropagation();
+        if (shape.type === ToolType.RECTANGLE || shape.type === ToolType.POLYGON) {
+            setSelectedShapeIds([shape.id]);
+            setEditingShapeId(shape.id);
+        }
+    };
+
+    // --- Vertex Edit Logic ---
+    const handleVertexMove = useCallback((e: MouseEvent | TouchEvent) => {
+        if (!draggedVertex || !initialVertexDragState.current) return;
+    
+        const initialShape = initialVertexDragState.current.shape;
+        let mousePos = getMousePosition(e);
+    
+        if (initialShape.type === ToolType.POLYGON) {
+            const newPoints = [...initialShape.points];
+            newPoints[draggedVertex.vertexIndex] = mousePos;
+            updateShapes([{ id: draggedVertex.shapeId, updates: { points: newPoints } }]);
+        } else if (initialShape.type === ToolType.RECTANGLE) {
+            // This requires more complex logic to convert vertex move to x,y,width,height,rotation change
+            // For now, we only support polygons for simplicity of this feature
+        }
+    
+    }, [draggedVertex, getMousePosition, updateShapes]);
+    
+
+    const handleVertexUp = useCallback(() => {
+        endBatchUpdate();
+        setDraggedVertex(null);
+        initialVertexDragState.current = null;
+    }, [endBatchUpdate]);
+
+    useEffect(() => {
+        if (draggedVertex) {
+            window.addEventListener('mousemove', handleVertexMove);
+            window.addEventListener('touchmove', handleVertexMove);
+            window.addEventListener('mouseup', handleVertexUp);
+            window.addEventListener('touchend', handleVertexUp);
+            return () => {
+                window.removeEventListener('mousemove', handleVertexMove);
+                window.removeEventListener('touchmove', handleVertexMove);
+                window.removeEventListener('mouseup', handleVertexUp);
+                window.removeEventListener('touchend', handleVertexUp);
+            };
+        }
+    }, [draggedVertex, handleVertexMove, handleVertexUp]);
+
+
+    const handleVertexDown = (e: React.MouseEvent | React.TouchEvent, shape: Shape, vertexIndex: number) => {
+        e.stopPropagation();
+        setSelectedVertex({ shapeId: shape.id, vertexIndex });
+        beginBatchUpdate();
+        
+        const vertices = getVertices(shape);
+        const numVertices = vertices.length;
+        const prevIndex = (vertexIndex - 1 + numVertices) % numVertices;
+        const nextIndex = (vertexIndex + 1) % numVertices;
+        
+        setDraggedVertex({
+            shapeId: shape.id,
+            vertexIndex,
+            adjacentIndices: [prevIndex, nextIndex]
+        });
+        initialVertexDragState.current = { shape: JSON.parse(JSON.stringify(shape)) };
+    };
+
+    const renderVertexHandles = () => {
+        if (!editingShapeId) return null;
+        const layer = layers.find(l => l.id === activeLayerId);
+        const shape = layer?.shapes.find(s => s.id === editingShapeId);
+        if (!shape || (shape.type !== ToolType.POLYGON && shape.type !== ToolType.RECTANGLE)) return null;
+
+        const vertices = getVertices(shape);
+        return (
+            <g>
+                {vertices.map((p, index) => {
+                    const isSelected = selectedVertex?.shapeId === shape.id && selectedVertex?.vertexIndex === index;
+                    return (
+                        <circle
+                            key={`${shape.id}-vertex-${index}`}
+                            cx={p.x}
+                            cy={p.y}
+                            r={6}
+                            fill={isSelected ? '#007bff' : 'white'}
+                            stroke={isSelected ? 'white' : '#007bff'}
+                            strokeWidth="2"
+                            className="cursor-move"
+                            onMouseDown={(e) => handleVertexDown(e, shape, index)}
+                            onTouchStart={(e) => handleVertexDown(e, shape, index)}
+                        />
+                    );
+                })}
+            </g>
+        );
+    };
+
+    const artboardX = artboard ? -artboard.width / 2 : 0;
+    const artboardY = artboard ? -artboard.height / 2 : 0;
+
     return (
         <svg
             ref={svgRef}
-            className="w-full h-full cursor-crosshair bg-white"
+            className={`w-full h-full bg-white ${isPanning ? 'cursor-grabbing' : panMode ? 'cursor-grab' : 'cursor-crosshair'}`}
+            viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
             onMouseDown={handleDrawStart}
             onMouseMove={handleDrawMove}
             onMouseUp={handleDrawEnd}
@@ -398,6 +721,8 @@ const Canvas: React.FC<CanvasProps> = ({
             onTouchMove={handleDrawMove}
             onTouchEnd={handleDrawEnd}
             onClick={handleCanvasClick}
+            onWheel={handleWheel}
+            onDoubleClick={handleDoubleClick}
         >
             {backgroundImage && (
                 <image
@@ -411,6 +736,29 @@ const Canvas: React.FC<CanvasProps> = ({
                 />
             )}
             
+            {artboard && (
+                 <g>
+                    <path
+                        d={`M-10000,-10000 H20000 V20000 H-10000 Z M${artboardX},${artboardY} h${artboard.width} v${artboard.height} h-${artboard.width} Z`}
+                        fill="rgba(0,0,0,0.08)"
+                        fillRule="evenodd"
+                        style={{ pointerEvents: 'none' }}
+                    />
+                    <rect
+                        x={artboardX}
+                        y={artboardY}
+                        width={artboard.width}
+                        height={artboard.height}
+                        fill="none"
+                        stroke="#888"
+                        strokeWidth="1"
+                        strokeDasharray="4 4"
+                        vectorEffect="non-scaling-stroke"
+                        style={{ pointerEvents: 'none' }}
+                    />
+                </g>
+            )}
+
             {layers.slice().reverse().map(layer => (
                 <g key={layer.id} visibility={layer.isVisible ? 'visible' : 'hidden'}>
                     {layer.shapes.map(shape => (
@@ -420,9 +768,11 @@ const Canvas: React.FC<CanvasProps> = ({
                             isSelected={selectedShapeIds.includes(shape.id) && layer.id === activeLayerId}
                             activeTool={activeTool}
                             onPointerDown={(e) => handleShapePointerDown(e, shape)}
+                            onDoubleClick={(e) => handleShapeDoubleClick(e, shape)}
                             onClick={(e: React.MouseEvent) => {
                                 e.stopPropagation();
                             }}
+                            isEditing={editingShapeId === shape.id}
                         />
                     ))}
                 </g>
@@ -430,6 +780,19 @@ const Canvas: React.FC<CanvasProps> = ({
             
             {renderPreview()}
             {renderPolygonPreview()}
+            
+            {marqueeRect && (
+                <rect
+                    x={marqueeRect.x}
+                    y={marqueeRect.y}
+                    width={marqueeRect.width}
+                    height={marqueeRect.height}
+                    fill="rgba(59, 130, 246, 0.2)"
+                    stroke="rgba(59, 130, 246, 0.8)"
+                    strokeWidth="1"
+                    vectorEffect="non-scaling-stroke"
+                />
+            )}
 
             {isMultiSelectMode && selectedShapes.map(shape => {
                 const bbox = getShapeBoundingBox(shape);
@@ -448,7 +811,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 />
             })}
 
-            {!isMultiSelectMode && selectionBoxShape && activeLayerId && layers.find(l => l.id === activeLayerId)?.isVisible && (
+            {!isMultiSelectMode && !editingShapeId && selectionBoxShape && activeLayerId && layers.find(l => l.id === activeLayerId)?.isVisible && (
                 <SelectionHandles 
                     shape={selectionBoxShape} 
                     selectedCount={selectedCount}
@@ -456,6 +819,9 @@ const Canvas: React.FC<CanvasProps> = ({
                     onMovePointerDown={(e) => handleTransformStart(e, 'move', selectionBoxShape, selectedShapes)}
                 />
             )}
+
+            {renderVertexHandles()}
+            {renderPolygonControls()}
         </svg>
     );
 };

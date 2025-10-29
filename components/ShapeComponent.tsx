@@ -10,6 +10,8 @@ interface ShapeComponentProps {
     activeTool: Tool;
     onPointerDown: (event: React.MouseEvent | React.TouchEvent) => void;
     onClick: (event: React.MouseEvent) => void;
+    onDoubleClick?: (event: React.MouseEvent) => void;
+    isEditing?: boolean;
 }
 
 const getTransform = (shape: Shape) => {
@@ -31,9 +33,10 @@ const getTransform = (shape: Shape) => {
     return `rotate(${shape.rotation}, ${cx}, ${cy})`;
 };
 
-const ShapeComponent: React.FC<ShapeComponentProps> = ({ shape, isSelected, activeTool, onPointerDown, onClick }) => {
+const ShapeComponent: React.FC<ShapeComponentProps> = ({ shape, isSelected, activeTool, onPointerDown, onClick, onDoubleClick, isEditing }) => {
     
     const getCursor = () => {
+        if (isEditing) return 'default';
         if (activeTool === ToolType.SELECT) {
             return isSelected ? 'move' : 'pointer';
         }
@@ -47,8 +50,10 @@ const ShapeComponent: React.FC<ShapeComponentProps> = ({ shape, isSelected, acti
         onMouseDown: onPointerDown,
         onTouchStart: onPointerDown,
         onClick: onClick,
+        onDoubleClick: onDoubleClick,
         style: { cursor: getCursor() },
-        transform: getTransform(shape)
+        transform: getTransform(shape),
+        strokeDasharray: isEditing ? "4 4" : undefined,
     };
 
     switch (shape.type) {

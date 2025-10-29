@@ -17,7 +17,7 @@ const StyleInput: React.FC<{
 }> = ({ label, ...props }) => (
     <div className="flex items-center justify-between">
         <label className="text-sm font-medium text-gray-600">{label}</label>
-        <input {...props} className="w-24 p-1 border border-gray-300 rounded-md" />
+        <input {...props} className="w-24 p-1 border border-gray-300 rounded-md bg-gray-100" />
     </div>
 );
 
