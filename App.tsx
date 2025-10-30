@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import type { Shape, Layer, Tool, Point, ShapeStyle, RectangleShape, EllipseShape, PolygonShape, Artboard, ViewBox } from './types';
+import type { Shape, Layer, Tool, Point, ShapeStyle, RectangleShape, EllipseShape, PolygonShape, Artboard, ViewBox, PathShape } from './types';
 import { ToolType } from './types';
 import Toolbar from './components/Toolbar';
 import PropertiesPanel from './components/PropertiesPanel';
@@ -202,27 +202,17 @@ const App: React.FC = () => {
 
     const handleImportSVG = (svgString: string) => {
         try {
-            const newShapes = parseSVG(svgString, defaultStyles);
-            if (newShapes.length === 0) {
+            const parsedShapes = parseSVG(svgString, defaultStyles);
+            if (parsedShapes.length === 0) {
                 alert('No valid shapes found in the SVG.');
                 return;
             }
 
             beginBatchUpdate();
 
-            const newLayer: Layer = {
-                id: `layer-${Date.now()}`,
-                name: `Imported ${layers.length}`,
-                shapes: newShapes,
-                isVisible: true,
-            };
+            const allPoints = parsedShapes.flatMap(getVertices);
+            let shapesToImport: Shape[] = parsedShapes;
 
-            setLayers(prev => [...prev, newLayer]);
-            setActiveLayerId(newLayer.id);
-            setSelectedShapeIds(newShapes.map(s => s.id));
-            
-            // Focus on the imported content
-            const allPoints = newShapes.flatMap(s => (s as PolygonShape).points);
             if (allPoints.length > 0) {
                 const xs = allPoints.map(p => p.x);
                 const ys = allPoints.map(p => p.y);
@@ -230,25 +220,56 @@ const App: React.FC = () => {
                 const minY = Math.min(...ys);
                 const maxX = Math.max(...xs);
                 const maxY = Math.max(...ys);
-                const width = maxX - minX;
-                const height = maxY - minY;
-                const padding = Math.max(width, height) * 0.1;
-                
-                const newViewBoxWidth = width + padding * 2;
-                const newViewBoxHeight = height + padding * 2;
-                
-                setViewBox({
-                    x: minX - padding,
-                    y: minY - padding,
-                    width: newViewBoxWidth,
-                    height: newViewBoxHeight,
+                const importWidth = maxX - minX;
+                const importHeight = maxY - minY;
+
+                const TARGET_SIZE_RATIO = 0.8;
+                const targetWidth = viewBox.width * TARGET_SIZE_RATIO;
+                const targetHeight = viewBox.height * TARGET_SIZE_RATIO;
+                const targetCenterX = viewBox.x + viewBox.width / 2;
+                const targetCenterY = viewBox.y + viewBox.height / 2;
+
+                let scaleFactor = 1;
+                const epsilon = 1e-6;
+                if (importWidth > epsilon && importHeight > epsilon) {
+                    scaleFactor = Math.min(targetWidth / importWidth, targetHeight / importHeight);
+                } else if (importWidth > epsilon) {
+                    scaleFactor = targetWidth / importWidth;
+                } else if (importHeight > epsilon) {
+                    scaleFactor = targetHeight / importHeight;
+                }
+
+                const originalCenterX = minX + importWidth / 2;
+                const originalCenterY = minY + importHeight / 2;
+
+                const transformPoint = (p: Point): Point => ({
+                    x: targetCenterX + (p.x - originalCenterX) * scaleFactor,
+                    y: targetCenterY + (p.y - originalCenterY) * scaleFactor,
                 });
 
-                const { width: svgWidth, height: svgHeight } = svgSizeRef.current;
-                const zoomX = svgWidth / newViewBoxWidth;
-                const zoomY = svgHeight / newViewBoxHeight;
-                setZoom(Math.min(zoomX, zoomY));
+                shapesToImport = parsedShapes.map(shape => {
+                    // Since the import process standardizes shapes into paths, we only need to handle PathShape
+                    const pathShape = shape as PathShape;
+                    return {
+                        ...pathShape,
+                        segments: pathShape.segments.map(seg => ({
+                            ...seg,
+                            points: seg.points.map(transformPoint),
+                        })),
+                    };
+                });
             }
+
+            const newLayer: Layer = {
+                id: `layer-${Date.now()}`,
+                name: `Imported ${layers.length}`,
+                shapes: shapesToImport,
+                isVisible: true,
+            };
+
+            setLayers(prev => [...prev, newLayer]);
+            setActiveLayerId(newLayer.id);
+            setSelectedShapeIds(shapesToImport.map(s => s.id));
 
         } catch (error) {
             console.error('Failed to import SVG:', error);
@@ -294,7 +315,14 @@ const App: React.FC = () => {
                     id: newId,
                     points: shape.points.map(p => ({ x: p.x + offset, y: p.y + offset })),
                 };
-            } else {
+            } else if (shape.type === ToolType.PATH) {
+                 newShape = {
+                    ...shape,
+                    id: newId,
+                    segments: shape.segments.map(seg => ({...seg, points: seg.points.map(p => ({x: p.x + offset, y: p.y + offset}))}))
+                 }
+            }
+            else {
                  newShape = {
                     ...shape,
                     id: newId,
@@ -425,9 +453,11 @@ const App: React.FC = () => {
         if (shape.type === ToolType.CIRCLE) {
             return { x: shape.x - shape.rx, y: shape.y - shape.ry, width: shape.rx * 2, height: shape.ry * 2 };
         }
-        if (shape.points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
-        const xs = shape.points.map(p => p.x);
-        const ys = shape.points.map(p => p.y);
+        const vertices = getVertices(shape);
+        if (vertices.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+        
+        const xs = vertices.map(p => p.x);
+        const ys = vertices.map(p => p.y);
         const minX = Math.min(...xs);
         const minY = Math.min(...ys);
         const width = Math.max(...xs) - minX;
@@ -469,7 +499,10 @@ const App: React.FC = () => {
             if(dx !== 0 || dy !== 0) {
                  if (shape.type === ToolType.POLYGON) {
                     (updates as Partial<PolygonShape>).points = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
-                } else {
+                } else if (shape.type === ToolType.PATH) {
+                    (updates as Partial<PathShape>).segments = shape.segments.map(seg => ({...seg, points: seg.points.map(p => ({x: p.x+dx, y: p.y+dy}))}));
+                }
+                else {
                     updates.x = shape.x + dx;
                     updates.y = shape.y + dy;
                 }
@@ -544,6 +577,9 @@ const App: React.FC = () => {
             if (initialShape.type === ToolType.POLYGON) {
                 (updates as Partial<PolygonShape>).points = initialShape.points.map(transformPoint);
                 delete updates.rotation;
+            } else if (initialShape.type === ToolType.PATH) {
+                (updates as Partial<PathShape>).segments = initialShape.segments.map(seg => ({ ...seg, points: seg.points.map(transformPoint) }));
+                delete updates.rotation;
             } else if (initialShape.type === ToolType.CIRCLE) {
                 const newCenter = transformPoint({ x: initialShape.x, y: initialShape.y });
                 updates.x = newCenter.x;
@@ -576,14 +612,8 @@ const App: React.FC = () => {
         let transformOrigin: Point;
         if (initialShapes.length === 1) {
             const shape = initialShapes[0];
-            if (shape.type === ToolType.POLYGON) {
-                const bbox = getSimpleBoundingBox(shape);
-                transformOrigin = { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
-            } else if (shape.type === ToolType.CIRCLE) {
-                transformOrigin = { x: shape.x, y: shape.y };
-            } else {
-                transformOrigin = { x: shape.x + shape.width / 2, y: shape.y + shape.height / 2 };
-            }
+            const bbox = getSimpleBoundingBox(shape);
+            transformOrigin = { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
         } else {
             const bboxes = initialShapes.map(s => getSimpleBoundingBox(s));
             const minX = Math.min(...bboxes.map(b => b.x));
@@ -619,10 +649,16 @@ const App: React.FC = () => {
                     y: newCenter.y,
                 };
                 shapeUpdates.push({ id: initialShape.id, updates });
-            } else { // Polygon
+            } else if (initialShape.type === ToolType.POLYGON) {
                 const polygon = initialShape;
                 const updates: Partial<PolygonShape> = {
                     points: polygon.points.map(p => scalePoint(p, transformOrigin, factor)),
+                };
+                shapeUpdates.push({ id: initialShape.id, updates });
+            } else if (initialShape.type === ToolType.PATH) {
+                const path = initialShape;
+                const updates: Partial<PathShape> = {
+                    segments: path.segments.map(seg => ({...seg, points: seg.points.map(p => scalePoint(p, transformOrigin, factor))})),
                 };
                 shapeUpdates.push({ id: initialShape.id, updates });
             }
@@ -701,7 +737,7 @@ const App: React.FC = () => {
     
         const shapeToUpdate = activeLayer.shapes.find(s => s.id === selectedVertex.shapeId);
     
-        if (!shapeToUpdate || (shapeToUpdate.type !== ToolType.POLYGON && shapeToUpdate.type !== ToolType.RECTANGLE)) {
+        if (!shapeToUpdate || (shapeToUpdate.type !== ToolType.POLYGON && shapeToUpdate.type !== ToolType.RECTANGLE && shapeToUpdate.type !== ToolType.PATH)) {
             return;
         }
         
@@ -739,7 +775,7 @@ const App: React.FC = () => {
                 updateShapes([{ id: shapeToUpdate.id, updates: { points: newPoints } }]);
                 setSelectedVertex(null); // Deselect vertex after snap
             }
-            // Note: Rectangle snapping is not implemented as it's more complex.
+            // Note: Rectangle and Path snapping is not implemented as it's more complex.
         }
     }, [selectedVertex, getActiveLayer, updateShapes, setSelectedVertex]);
 
@@ -775,15 +811,23 @@ const App: React.FC = () => {
             if (e.key.toLowerCase() === 'v') setActiveTool(ToolType.SELECT);
             if (e.key.toLowerCase() === 'r') setActiveTool(ToolType.RECTANGLE);
             if (e.key.toLowerCase() === 'c') setActiveTool(ToolType.CIRCLE);
-            if (e.key.toLowerCase() === 'p') setActiveTool(ToolType.POLYGON);
+            if (e.key.toLowerCase() === 'p' && activeTool !== ToolType.PATH) { // prevent conflict with path tool
+                setActiveTool(ToolType.POLYGON);
+            } else if (e.key.toLowerCase() === 'p' && activeTool === ToolType.POLYGON) {
+                setActiveTool(ToolType.PATH);
+            } else if (e.key.toLowerCase() === 'p' && activeTool === ToolType.PATH) {
+                setActiveTool(ToolType.POLYGON);
+            }
+
+
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [handleDeleteShapes, handleDuplicateShapes, handleGroupShapes, handleUngroupShapes, handleUndo, redo]);
+    }, [handleDeleteShapes, handleDuplicateShapes, handleGroupShapes, handleUngroupShapes, handleUndo, redo, activeTool]);
 
     const selectedShapes = getSelectedShapes();
     const canApplyCornerRadius = selectedShapes.some(s => s.type === ToolType.RECTANGLE || s.type === ToolType.POLYGON);
-    const canEnterVertexEditMode = selectedShapes.length === 1 && (selectedShapes[0].type === ToolType.RECTANGLE || selectedShapes[0].type === ToolType.POLYGON);
+    const canEnterVertexEditMode = selectedShapes.length === 1 && (selectedShapes[0].type === ToolType.RECTANGLE || selectedShapes[0].type === ToolType.POLYGON || selectedShapes[0].type === ToolType.PATH);
 
 
     const getMaxCornerRadiusForSlider = useCallback((): number => {

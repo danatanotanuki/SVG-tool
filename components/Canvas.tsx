@@ -1,10 +1,12 @@
+
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import type { Shape, Layer, Tool, Point, ShapeStyle, PolygonShape, EllipseShape, Artboard, ViewBox } from '../types';
+import type { Shape, Layer, Tool, Point, ShapeStyle, PolygonShape, EllipseShape, Artboard, ViewBox, PathShape, PathSegment } from '../types';
 import { ToolType, RectangleShape } from '../types';
 import ShapeComponent from './ShapeComponent';
 import SelectionHandles, { getBoundingBox as getShapeBoundingBox, BBox, HandleType } from './SelectionHandles';
 import { getVertices, getShapeAABB } from '../utils/geometry';
 import { CheckIcon, XIcon } from './icons/Icons';
+import { segmentsToPathData } from '../utils/pathTools';
 
 interface CanvasProps {
     layers: Layer[];
@@ -42,6 +44,7 @@ const Canvas: React.FC<CanvasProps> = ({
     const [startPoint, setStartPoint] = useState<Point>({ x: 0, y: 0 });
     const [currentPoint, setCurrentPoint] = useState<Point>({ x: 0, y: 0 });
     const [polygonPoints, setPolygonPoints] = useState<Point[]>([]);
+    const [pathSegments, setPathSegments] = useState<PathSegment[]>([]);
     
     const [activeHandle, setActiveHandle] = useState<HandleType | null>(null);
     const initialDragState = useRef<{
@@ -85,7 +88,6 @@ const Canvas: React.FC<CanvasProps> = ({
     const getMousePosition = useCallback((e: MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent): Point => {
         if (!svgRef.current) return { x: 0, y: 0 };
         const svg = svgRef.current;
-        const rect = svg.getBoundingClientRect();
 
         const evt = 'nativeEvent' in e ? e.nativeEvent : e;
         const clientPoint = 'touches' in evt && evt.touches.length > 0
@@ -94,14 +96,16 @@ const Canvas: React.FC<CanvasProps> = ({
                 ? evt.changedTouches[0]
                 : evt as MouseEvent;
 
-        const scaleX = viewBox.width / rect.width;
-        const scaleY = viewBox.height / rect.height;
-
-        return {
-            x: (clientPoint.clientX - rect.left) * scaleX + viewBox.x,
-            y: (clientPoint.clientY - rect.top) * scaleY + viewBox.y,
-        };
-    }, [viewBox]);
+        const point = new DOMPoint(clientPoint.clientX, clientPoint.clientY);
+        const ctm = svg.getScreenCTM();
+        if (ctm) {
+            const svgPoint = point.matrixTransform(ctm.inverse());
+            return { x: svgPoint.x, y: svgPoint.y };
+        }
+        
+        // Should not happen in modern browsers if SVG is in the DOM.
+        return { x: 0, y: 0 };
+    }, []);
 
 
     const addShapeToLayer = useCallback((shape: Shape) => {
@@ -143,7 +147,7 @@ const Canvas: React.FC<CanvasProps> = ({
             return;
         }
 
-        if (activeTool === ToolType.POLYGON) return;
+        if (activeTool === ToolType.POLYGON || activeTool === ToolType.PATH) return;
         
         setDrawing(true);
         setStartPoint(pos);
@@ -245,9 +249,16 @@ const Canvas: React.FC<CanvasProps> = ({
     }, [drawing, isPanning, activeTool, startPoint, currentPoint, defaultStyles, addShapeToLayer, layers, activeLayerId, marqueeRect, setSelectedShapeIds]);
     
     const handleCanvasClick = (e: React.MouseEvent) => {
-        if (activeTool !== ToolType.POLYGON) return;
         const pos = getMousePosition(e);
-        setPolygonPoints([...polygonPoints, pos]);
+        if (activeTool === ToolType.POLYGON) {
+            setPolygonPoints([...polygonPoints, pos]);
+        } else if (activeTool === ToolType.PATH) {
+            if(pathSegments.length === 0) {
+                setPathSegments([{ command: 'M', points: [pos] }]);
+            } else {
+                setPathSegments([...pathSegments, { command: 'L', points: [pos] }]);
+            }
+        }
     };
 
     const handleCompletePolygon = useCallback(() => {
@@ -268,6 +279,24 @@ const Canvas: React.FC<CanvasProps> = ({
         setPolygonPoints([]);
     }, []);
 
+    const handleCompletePath = useCallback(() => {
+        if (pathSegments.length < 2) return; // Need at least M and L
+        const id = `shape-${Date.now()}`;
+        const newShape: PathShape = {
+            id, type: ToolType.PATH,
+            segments: pathSegments,
+            x: 0, y: 0,
+            rotation: 0,
+            ...defaultStyles
+        };
+        addShapeToLayer(newShape);
+        setPathSegments([]);
+    }, [pathSegments, defaultStyles, addShapeToLayer]);
+
+    const handleCancelPath = useCallback(() => {
+        setPathSegments([]);
+    }, []);
+
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -277,11 +306,11 @@ const Canvas: React.FC<CanvasProps> = ({
                 document.body.style.cursor = 'grabbing';
             }
              if (activeTool === ToolType.POLYGON) {
-                if (e.key === 'Enter') {
-                    handleCompletePolygon();
-                } else if (e.key === 'Escape') {
-                    handleCancelPolygon();
-                }
+                if (e.key === 'Enter') handleCompletePolygon();
+                else if (e.key === 'Escape') handleCancelPolygon();
+            } else if (activeTool === ToolType.PATH) {
+                if (e.key === 'Enter') handleCompletePath();
+                else if (e.key === 'Escape') handleCancelPath();
             }
         };
 
@@ -298,7 +327,7 @@ const Canvas: React.FC<CanvasProps> = ({
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [activeTool, handleCompletePolygon, handleCancelPolygon, isPanning]);
+    }, [activeTool, handleCompletePolygon, handleCancelPolygon, handleCompletePath, handleCancelPath, isPanning]);
 
     const handleWheel = (e: React.WheelEvent) => {
         e.preventDefault();
@@ -345,17 +374,38 @@ const Canvas: React.FC<CanvasProps> = ({
         return null;
     };
     
-    const renderPolygonPreview = () => {
-        if (activeTool !== ToolType.POLYGON || polygonPoints.length === 0) return null;
-        const pointsStr = polygonPoints.map(p => `${p.x},${p.y}`).join(' ');
-        return <polyline points={pointsStr} fill="none" stroke="rgba(0,0,255,0.5)" strokeWidth="1" />;
+    const renderDrawingPreview = () => {
+        if (activeTool === ToolType.POLYGON && polygonPoints.length > 0) {
+            const pointsStr = polygonPoints.map(p => `${p.x},${p.y}`).join(' ');
+            return <polyline points={pointsStr} fill="none" stroke="rgba(0,0,255,0.5)" strokeWidth="1" />;
+        }
+        if (activeTool === ToolType.PATH && pathSegments.length > 0) {
+            const d = segmentsToPathData(pathSegments);
+            return <path d={d} fill="none" stroke="rgba(0,0,255,0.5)" strokeWidth="1" />;
+        }
+        return null;
     };
     
-    const renderPolygonControls = () => {
-        if (activeTool !== ToolType.POLYGON || polygonPoints.length === 0) return null;
+    const renderDrawingControls = () => {
+        let firstPoint: Point | null = null;
+        let canComplete = false;
+        let onComplete: () => void = () => {};
+        let onCancel: () => void = () => {};
+
+        if (activeTool === ToolType.POLYGON && polygonPoints.length > 0) {
+            firstPoint = polygonPoints[0];
+            canComplete = polygonPoints.length >= 3;
+            onComplete = handleCompletePolygon;
+            onCancel = handleCancelPolygon;
+        } else if (activeTool === ToolType.PATH && pathSegments.length > 0) {
+            firstPoint = pathSegments[0].points[0];
+            canComplete = pathSegments.length >= 2;
+            onComplete = handleCompletePath;
+            onCancel = handleCancelPath;
+        } else {
+            return null;
+        }
         
-        const firstPoint = polygonPoints[0];
-        const canComplete = polygonPoints.length >= 3;
         const buttonSize = 28;
         const iconSize = 16;
         const offset = buttonSize / 2 + 10;
@@ -365,10 +415,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 <g 
                     transform={`translate(${-offset}, ${-offset})`}
                     style={{ cursor: canComplete ? 'pointer' : 'not-allowed' }}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (canComplete) handleCompletePolygon();
-                    }}
+                    onClick={(e) => { e.stopPropagation(); if (canComplete) onComplete(); }}
                 >
                     <circle r={buttonSize/2} fill="white" stroke="#ccc" />
                     <CheckIcon 
@@ -380,10 +427,7 @@ const Canvas: React.FC<CanvasProps> = ({
                  <g 
                     transform={`translate(${offset}, ${-offset})`}
                     style={{ cursor: 'pointer' }}
-                     onClick={(e) => {
-                        e.stopPropagation();
-                        handleCancelPolygon();
-                    }}
+                     onClick={(e) => { e.stopPropagation(); onCancel(); }}
                 >
                     <circle r={buttonSize/2} fill="white" stroke="#ccc" />
                      <XIcon 
@@ -404,7 +448,9 @@ const Canvas: React.FC<CanvasProps> = ({
         if (selectedShapes.length === 0) return null;
         if (selectedShapes.length === 1) return selectedShapes[0];
 
-        const bboxes = selectedShapes.map(s => getShapeBoundingBox(s));
+        const bboxes = selectedShapes.map(s => getShapeBoundingBox(s)).filter(b => b !== null) as BBox[];
+        if (bboxes.length === 0) return null;
+
         const minX = Math.min(...bboxes.map(b => b.x));
         const minY = Math.min(...bboxes.map(b => b.y));
         const maxX = Math.max(...bboxes.map(b => b.x + b.width));
@@ -424,6 +470,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
     const handleSelectionTransform = useCallback((updates: Partial<Shape>, initialShapes: Shape[], initialGroupBbox: Shape) => {
         const oldBbox = getShapeBoundingBox(initialGroupBbox);
+        if(!oldBbox) return;
         
         const updatesBBox = updates as Partial<BBox & {rotation: number}>;
         const newBbox: BBox = {
@@ -461,7 +508,11 @@ const Canvas: React.FC<CanvasProps> = ({
             if (initialShape.type === ToolType.POLYGON) {
                  const newPoints = initialShape.points.map(p => transformPoint(p, oldBbox, groupMatrix));
                  (shapeUpdates as Partial<PolygonShape>).points = newPoints;
-            } else {
+            } else if (initialShape.type === ToolType.PATH) {
+                 const newSegments = initialShape.segments.map(seg => ({...seg, points: seg.points.map(p => transformPoint(p, oldBbox, groupMatrix))}));
+                 (shapeUpdates as Partial<PathShape>).segments = newSegments;
+            }
+            else {
                  newPos = transformPoint({x: initialShape.x, y: initialShape.y}, oldBbox, groupMatrix);
                  shapeUpdates.x = newPos.x;
                  shapeUpdates.y = newPos.y;
@@ -557,12 +608,15 @@ const Canvas: React.FC<CanvasProps> = ({
         if ('touches' in e) e.preventDefault();
         if (!svgRef.current) return;
         
+        const bbox = getShapeBoundingBox(boxShape);
+        if (!bbox) return;
+
         beginBatchUpdate();
     
         setActiveHandle(handle);
         initialDragState.current = {
             startPoint: getMousePosition(e),
-            bbox: getShapeBoundingBox(boxShape),
+            bbox: bbox,
             svg: svgRef.current,
             initialShapes: JSON.parse(JSON.stringify(shapesToTransform)),
             initialGroupBbox: JSON.parse(JSON.stringify(boxShape)),
@@ -610,7 +664,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
     const handleShapeDoubleClick = (e: React.MouseEvent, shape: Shape) => {
         e.stopPropagation();
-        if (shape.type === ToolType.RECTANGLE || shape.type === ToolType.POLYGON) {
+        if (shape.type === ToolType.RECTANGLE || shape.type === ToolType.POLYGON || shape.type === ToolType.PATH) {
             setSelectedShapeIds([shape.id]);
             setEditingShapeId(shape.id);
         }
@@ -679,7 +733,7 @@ const Canvas: React.FC<CanvasProps> = ({
         if (!editingShapeId) return null;
         const layer = layers.find(l => l.id === activeLayerId);
         const shape = layer?.shapes.find(s => s.id === editingShapeId);
-        if (!shape || (shape.type !== ToolType.POLYGON && shape.type !== ToolType.RECTANGLE)) return null;
+        if (!shape || (shape.type !== ToolType.POLYGON && shape.type !== ToolType.RECTANGLE && shape.type !== ToolType.PATH)) return null;
 
         const vertices = getVertices(shape);
         return (
@@ -779,7 +833,7 @@ const Canvas: React.FC<CanvasProps> = ({
             ))}
             
             {renderPreview()}
-            {renderPolygonPreview()}
+            {renderDrawingPreview()}
             
             {marqueeRect && (
                 <rect
@@ -796,6 +850,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
             {isMultiSelectMode && selectedShapes.map(shape => {
                 const bbox = getShapeBoundingBox(shape);
+                if (!bbox) return null;
                 return <rect
                     key={`selection-${shape.id}`}
                     x={bbox.x}
@@ -821,7 +876,7 @@ const Canvas: React.FC<CanvasProps> = ({
             )}
 
             {renderVertexHandles()}
-            {renderPolygonControls()}
+            {renderDrawingControls()}
         </svg>
     );
 };

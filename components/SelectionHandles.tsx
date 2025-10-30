@@ -2,6 +2,7 @@ import React from 'react';
 import type { Shape, Point, EllipseShape } from '../types';
 import { ToolType } from '../types';
 import { MoveIcon } from './icons/Icons';
+import { getShapeAABB } from '../utils/geometry';
 
 export type HandleType = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'rotate' | 'move';
 
@@ -15,28 +16,38 @@ export interface BBox {
     rotation: number;
 }
 
-export const getBoundingBox = (shape: Shape): BBox => {
-    let x, y, width, height;
+export const getBoundingBox = (shape: Shape): BBox | null => {
     const rotation = shape.rotation || 0;
 
     if (shape.type === ToolType.RECTANGLE) {
-        ({ x, y, width, height } = shape);
-    } else if (shape.type === ToolType.CIRCLE) {
+        const { x, y, width, height } = shape;
+        return { x, y, width, height, cx: x + width / 2, cy: y + height / 2, rotation };
+    } 
+    if (shape.type === ToolType.CIRCLE) {
         const ellipse = shape as EllipseShape;
-        x = ellipse.x - ellipse.rx;
-        y = ellipse.y - ellipse.ry;
-        width = ellipse.rx * 2;
-        height = ellipse.ry * 2;
-    } else { // Polygon
-        if(shape.points.length === 0) return { x: 0, y: 0, width: 0, height: 0, cx: 0, cy: 0, rotation };
-        const xs = shape.points.map(p => p.x);
-        const ys = shape.points.map(p => p.y);
-        x = Math.min(...xs);
-        y = Math.min(...ys);
-        width = Math.max(...xs) - x;
-        height = Math.max(...ys) - y;
-    }
-    return { x, y, width, height, cx: x + width / 2, cy: y + height / 2, rotation };
+        const x = ellipse.x - ellipse.rx;
+        const y = ellipse.y - ellipse.ry;
+        const width = ellipse.rx * 2;
+        const height = ellipse.ry * 2;
+        return { x, y, width, height, cx: x + width / 2, cy: y + height / 2, rotation };
+    } 
+    
+    // For Polygons and Paths, we need their Axis-Aligned Bounding Box
+    const aabb = getShapeAABB(shape);
+    if (aabb.minX === Infinity) return null;
+    
+    const width = aabb.maxX - aabb.minX;
+    const height = aabb.maxY - aabb.minY;
+    
+    return {
+        x: aabb.minX,
+        y: aabb.minY,
+        width,
+        height,
+        cx: aabb.minX + width / 2,
+        cy: aabb.minY + height / 2,
+        rotation
+    };
 };
 
 interface SelectionHandlesProps {
@@ -48,6 +59,8 @@ interface SelectionHandlesProps {
 
 const SelectionHandles: React.FC<SelectionHandlesProps> = ({ shape, selectedCount, onPointerDown, onMovePointerDown }) => {
     const bbox = getBoundingBox(shape);
+    if (!bbox) return null;
+
     const handleSize = 10;
     const halfHandle = handleSize / 2;
     

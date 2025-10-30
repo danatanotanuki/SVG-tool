@@ -1,7 +1,8 @@
-import type { Layer, Shape, RectangleShape, EllipseShape, PolygonShape, Point, Artboard } from '../types';
+import type { Layer, Shape, RectangleShape, EllipseShape, PolygonShape, Point, Artboard, PathShape } from '../types';
 import { ToolType } from '../types';
 import { getRoundedPolygonPath } from './polygonTools';
 import { getShapeAABB } from './geometry';
+import { segmentsToPathData } from './pathTools';
 
 const getShapeSVG = (shape: Shape): string => {
     const getTransform = (s: Shape) => {
@@ -12,16 +13,11 @@ const getShapeSVG = (shape: Shape): string => {
         } else if (s.type === ToolType.CIRCLE) {
             cx = s.x;
             cy = s.y;
-        } else { // Polygon
-            if (s.points.length === 0) return '';
-            const xs = s.points.map(p => p.x);
-            const ys = s.points.map(p => p.y);
-            const minX = Math.min(...xs);
-            const minY = Math.min(...ys);
-            const width = Math.max(...xs) - minX;
-            const height = Math.max(...ys) - minY;
-            cx = minX + width / 2;
-            cy = minY + height / 2;
+        } else { // Polygon or Path
+            const bbox = getShapeAABB(s);
+             if (bbox.minX === Infinity) return '';
+            cx = bbox.minX + (bbox.maxX - bbox.minX) / 2;
+            cy = bbox.minY + (bbox.maxY - bbox.minY) / 2;
         }
         return s.rotation !== 0 ? `transform="rotate(${s.rotation} ${cx} ${cy})"` : '';
     };
@@ -45,6 +41,10 @@ const getShapeSVG = (shape: Shape): string => {
             }
             const pointsStr = polygon.points.map(p => `${p.x},${p.y}`).join(' ');
             return `<polygon points="${pointsStr}" ${commonProps} />`;
+        case ToolType.PATH:
+            const path = shape as PathShape;
+            const fillRule = path.fillRule ? `fill-rule="${path.fillRule}"` : '';
+            return `<path d="${segmentsToPathData(path.segments)}" ${fillRule} ${commonProps} />`;
         default:
             return '';
     }
@@ -92,7 +92,7 @@ export const exportToSVG = (layers: Layer[], title?: string, artboard?: Artboard
         fullSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBoxX} ${viewBoxY} ${width} ${height}" width="${width}" height="${height}">` +
                   `${svgTitle}\n${svgContent}\n</svg>`;
     }
-    else if (hasShapes) {
+    else if (hasShapes && globalMinX !== Infinity) {
         const padding = 10;
         const viewBoxX = globalMinX - padding;
         const viewBoxY = globalMinY - padding;

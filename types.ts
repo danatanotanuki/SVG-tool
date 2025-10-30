@@ -8,6 +8,7 @@ export enum ToolType {
     RECTANGLE = 'rectangle',
     CIRCLE = 'circle',
     POLYGON = 'polygon',
+    PATH = 'path',
 }
 
 export type Tool = ToolType;
@@ -46,7 +47,19 @@ export interface PolygonShape extends BaseShape {
     cornerRadius?: number;
 }
 
-export type Shape = RectangleShape | EllipseShape | PolygonShape;
+export interface PathSegment {
+    command: 'M' | 'L' | 'C' | 'Q' | 'A' | 'Z';
+    points: Point[];
+}
+
+export interface PathShape extends BaseShape {
+    type: ToolType.PATH;
+    segments: PathSegment[];
+    fillRule?: 'evenodd' | 'nonzero';
+}
+
+
+export type Shape = RectangleShape | EllipseShape | PolygonShape | PathShape;
 
 export interface Layer {
     id: string;

@@ -32,6 +32,15 @@ export const getVertices = (shape: Shape): Point[] => {
     if (shape.type === ToolType.POLYGON) {
         return shape.points;
     }
+    if (shape.type === ToolType.PATH) {
+        // Return only the movable anchor points from the path segments
+        return shape.segments.flatMap(s => {
+            if (s.command === 'A') { // Arc command has a different structure
+                return [s.points[s.points.length - 1]]; // Only the end point is a vertex
+            }
+            return s.points;
+        });
+    }
     return [];
 };
 
@@ -50,6 +59,18 @@ const rotatePoint = (point: Point, center: Point, angle: number): Point => {
 
 export const getShapeAABB = (shape: Shape): { minX: number, minY: number, maxX: number, maxY: number } => {
     const rotation = shape.rotation || 0;
+    
+    // For path shapes, rotation is baked in, so we just calculate the bbox of its points
+    if (shape.type === ToolType.PATH) {
+        // Simplified AABB for paths: only considers anchor points.
+        // A more accurate method would sample points along curves.
+        const allPoints = shape.segments.flatMap(s => s.points);
+        if (allPoints.length === 0) return { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+        const xs = allPoints.map(p => p.x);
+        const ys = allPoints.map(p => p.y);
+        return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+    }
+
     if (rotation === 0) {
         if (shape.type === ToolType.RECTANGLE) {
             return { minX: shape.x, minY: shape.y, maxX: shape.x + shape.width, maxY: shape.y + shape.height };

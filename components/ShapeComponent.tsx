@@ -1,8 +1,9 @@
 import React from 'react';
-import type { Shape, RectangleShape, EllipseShape, PolygonShape, Tool } from '../types';
+import type { Shape, RectangleShape, EllipseShape, PolygonShape, Tool, PathShape } from '../types';
 import { ToolType } from '../types';
 import { getBoundingBox } from './SelectionHandles';
 import { getRoundedPolygonPath } from '../utils/polygonTools';
+import { segmentsToPathData } from '../utils/pathTools';
 
 interface ShapeComponentProps {
     shape: Shape;
@@ -22,9 +23,9 @@ const getTransform = (shape: Shape) => {
     } else if (shape.type === ToolType.CIRCLE) {
         cx = shape.x;
         cy = shape.y;
-    } else if (shape.type === ToolType.POLYGON) {
-        if (shape.points.length === 0) return '';
+    } else if (shape.type === ToolType.POLYGON || shape.type === ToolType.PATH) {
         const bbox = getBoundingBox(shape);
+        if (!bbox) return '';
         cx = bbox.cx;
         cy = bbox.cy;
     } else {
@@ -75,7 +76,11 @@ const ShapeComponent: React.FC<ShapeComponentProps> = ({ shape, isSelected, acti
             }
             const pointsStr = polygon.points.map(p => `${p.x},${p.y}`).join(' ');
             return <polygon points={pointsStr} {...commonProps} />;
-        
+
+        case ToolType.PATH:
+            const path = shape as PathShape;
+            return <path d={segmentsToPathData(path.segments)} fillRule={path.fillRule} {...commonProps} />;
+
         default:
             return null;
     }

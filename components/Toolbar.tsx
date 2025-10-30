@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Tool } from '../types';
 import { ToolType } from '../types';
-import { MousePointerIcon, RectangleIcon, CircleIcon, PolygonIcon } from './icons/Icons';
+import { MousePointerIcon, RectangleIcon, CircleIcon, PolygonIcon, PenToolIcon } from './icons/Icons';
 
 interface ToolbarProps {
     activeTool: Tool;
@@ -40,6 +40,9 @@ const Toolbar: React.FC<ToolbarProps> = ({ activeTool, onToolSelect }) => {
             </ToolButton>
             <ToolButton label="Polygon" tool={ToolType.POLYGON} activeTool={activeTool} onClick={onToolSelect}>
                 <PolygonIcon className="w-6 h-6" />
+            </ToolButton>
+            <ToolButton label="Path" tool={ToolType.PATH} activeTool={activeTool} onClick={onToolSelect}>
+                <PenToolIcon className="w-6 h-6" />
             </ToolButton>
         </aside>
     );

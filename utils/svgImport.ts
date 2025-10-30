@@ -1,22 +1,33 @@
 
-import type { Shape, Point, ShapeStyle, PolygonShape } from '../types';
+import type { Shape, Point, ShapeStyle, PathShape, PathSegment } from '../types';
 import { ToolType } from '../types';
+import { parsePathData } from './pathTools';
 
-function parseStyles(element: SVGElement, defaultStyles: ShapeStyle): ShapeStyle {
+function parseStyles(element: SVGElement, defaultStyles: ShapeStyle): ShapeStyle & { fillRule?: 'evenodd' | 'nonzero' } {
     const style = window.getComputedStyle(element);
+    const fillRule = element.getAttribute('fill-rule') as 'evenodd' | 'nonzero' | null;
+    
     return {
         fill: style.fill && style.fill !== 'none' ? style.fill : defaultStyles.fill,
         stroke: style.stroke && style.stroke !== 'none' ? style.stroke : defaultStyles.stroke,
         strokeWidth: style.strokeWidth ? parseFloat(style.strokeWidth) : defaultStyles.strokeWidth,
+        ...(fillRule && { fillRule }),
     };
 }
 
-function applyTransform(points: Point[], matrix: DOMMatrix): Point[] {
-    return points.map(p => {
+function applyTransformToSegments(segments: PathSegment[], matrix: DOMMatrix): PathSegment[] {
+    const transformPoint = (p: Point) => {
         const domPoint = new DOMPoint(p.x, p.y).matrixTransform(matrix);
         return { x: domPoint.x, y: domPoint.y };
-    });
+    };
+
+    return segments.map(seg => ({
+        ...seg,
+        // We assume arc transformations are baked in by browser, so we only transform coordinate points
+        points: seg.command === 'A' ? seg.points : seg.points.map(transformPoint),
+    }));
 }
+
 
 export function parseSVG(svgString: string, defaultStyles: ShapeStyle): Shape[] {
     const parser = new DOMParser();
@@ -30,113 +41,98 @@ export function parseSVG(svgString: string, defaultStyles: ShapeStyle): Shape[] 
     if (!svgElement) {
         throw new Error('No <svg> element found');
     }
-
-    const shapes: PolygonShape[] = [];
-
-    // Temporary container to perform DOM calculations
-    const tempContainer = document.createElement('div');
-    tempContainer.style.visibility = 'hidden';
-    tempContainer.style.position = 'absolute';
-    document.body.appendChild(tempContainer);
     
-    const elements = svgElement.querySelectorAll('rect, circle, ellipse, polygon, path');
+    // Temporarily remove viewBox, width, and height attributes to prevent global scaling.
+    // This ensures that the getCTM() call for child elements returns coordinates
+    // in a neutral system, independent of the imported SVG's own coordinate system settings.
+    svgElement.removeAttribute('viewBox');
+    svgElement.removeAttribute('width');
+    svgElement.removeAttribute('height');
 
-    elements.forEach((el) => {
-        const element = el as SVGGraphicsElement;
+    // Style the SVG to be invisible and append it to the DOM.
+    // This allows the browser to compute the correct CTM.
+    svgElement.style.position = 'absolute';
+    svgElement.style.left = '-9999px';
+    svgElement.style.top = '-9999px';
+    document.body.appendChild(svgElement);
 
-        // Skip elements with no visibility
-        const style = window.getComputedStyle(element);
-        if (style.display === 'none' || style.visibility === 'hidden') {
-            return;
-        }
+    const shapes: PathShape[] = [];
 
-        let points: Point[] = [];
-        const tagName = element.tagName.toLowerCase();
+    try {
+        const elements = svgElement.querySelectorAll('rect, circle, ellipse, polygon, path, line, polyline');
 
-        if (tagName === 'rect') {
-            // FIX: Cast element to SVGRectElement to access x, y, width, and height properties.
-            const rectElement = element as SVGRectElement;
-            const x = rectElement.x.baseVal.value;
-            const y = rectElement.y.baseVal.value;
-            const width = rectElement.width.baseVal.value;
-            const height = rectElement.height.baseVal.value;
-            points = [
-                { x, y },
-                { x: x + width, y },
-                { x: x + width, y: y + height },
-                { x, y: y + height },
-            ];
-        } else if (tagName === 'circle') {
-            const cx = (element as SVGCircleElement).cx.baseVal.value;
-            const cy = (element as SVGCircleElement).cy.baseVal.value;
-            const r = (element as SVGCircleElement).r.baseVal.value;
-            // Approximate circle as a polygon
-            const segments = 32;
-            for (let i = 0; i < segments; i++) {
-                const angle = (i / segments) * 2 * Math.PI;
-                points.push({
-                    x: cx + r * Math.cos(angle),
-                    y: cy + r * Math.sin(angle),
-                });
-            }
-        } else if (tagName === 'ellipse') {
-            const cx = (element as SVGEllipseElement).cx.baseVal.value;
-            const cy = (element as SVGEllipseElement).cy.baseVal.value;
-            const rx = (element as SVGEllipseElement).rx.baseVal.value;
-            const ry = (element as SVGEllipseElement).ry.baseVal.value;
-            // Approximate ellipse as a polygon
-            const segments = 32;
-            for (let i = 0; i < segments; i++) {
-                const angle = (i / segments) * 2 * Math.PI;
-                points.push({
-                    x: cx + rx * Math.cos(angle),
-                    y: cy + ry * Math.sin(angle),
-                });
-            }
-        } else if (tagName === 'polygon') {
-            const polygonPoints = (element as SVGPolygonElement).points;
-            for (let i = 0; i < polygonPoints.numberOfItems; i++) {
-                const p = polygonPoints.getItem(i);
-                points.push({ x: p.x, y: p.y });
-            }
-        } else if (tagName === 'path') {
-            const path = element as SVGPathElement;
-            const len = path.getTotalLength();
-            if (len > 0) {
-                // Sample points along the path
-                const step = Math.min(len / 100, 5); // Adjust step for detail
-                for (let i = 0; i < len; i += step) {
-                    const p = path.getPointAtLength(i);
-                    points.push({ x: p.x, y: p.y });
-                }
-                 points.push(path.getPointAtLength(len)); // Add the last point
-            }
-        }
-
-        if (points.length > 0) {
-            // Get transform matrix relative to the svg container
-            const matrix = element.getCTM();
+        elements.forEach((el) => {
+            const element = el as SVGGraphicsElement;
             
-            if (matrix) {
-                points = applyTransform(points, matrix);
+            const style = window.getComputedStyle(element);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                return;
             }
 
-            const shapeStyles = parseStyles(element, defaultStyles);
+            let d = '';
+            const tagName = element.tagName.toLowerCase();
 
-            shapes.push({
-                id: `shape-${Date.now()}-${Math.random()}`,
-                type: ToolType.POLYGON,
-                points,
-                x: 0,
-                y: 0,
-                rotation: 0,
-                ...shapeStyles,
-            });
-        }
-    });
+            if (tagName === 'rect') {
+                const x = (element as SVGRectElement).x.baseVal.value;
+                const y = (element as SVGRectElement).y.baseVal.value;
+                const width = (element as SVGRectElement).width.baseVal.value;
+                const height = (element as SVGRectElement).height.baseVal.value;
+                const rx = (element as SVGRectElement).rx.baseVal.value;
+                const ry = (element as SVGRectElement).ry.baseVal.value;
+                 if (rx || ry) {
+                    d = `M${x + rx},${y} h${width - 2 * rx} a${rx},${ry} 0 0 1 ${rx},${ry} v${height - 2 * ry} a${rx},${ry} 0 0 1 -${rx},${ry} h-${width - 2 * rx} a${rx},${ry} 0 0 1 -${rx},-${ry} v-${height - 2 * ry} a${rx},${ry} 0 0 1 ${rx},-${ry} z`;
+                } else {
+                    d = `M${x},${y} h${width} v${height} h-${width} z`;
+                }
+            } else if (tagName === 'circle') {
+                const cx = (element as SVGCircleElement).cx.baseVal.value;
+                const cy = (element as SVGCircleElement).cy.baseVal.value;
+                const r = (element as SVGCircleElement).r.baseVal.value;
+                d = `M${cx-r},${cy} a${r},${r} 0 1,0 ${r*2},0 a${r},${r} 0 1,0 -${r*2},0 z`;
+            } else if (tagName === 'ellipse') {
+                const cx = (element as SVGEllipseElement).cx.baseVal.value;
+                const cy = (element as SVGEllipseElement).cy.baseVal.value;
+                const rx = (element as SVGEllipseElement).rx.baseVal.value;
+                const ry = (element as SVGEllipseElement).ry.baseVal.value;
+                d = `M${cx-rx},${cy} a${rx},${ry} 0 1,0 ${rx*2},0 a${rx},${ry} 0 1,0 -${rx*2},0 z`;
+            } else if (tagName === 'polygon' || tagName === 'polyline') {
+                const points = (element as SVGPolygonElement).points;
+                if (points.numberOfItems > 0) {
+                     d = `M${points.getItem(0).x} ${points.getItem(0).y} ` + 
+                         Array.from({length: points.numberOfItems - 1}, (_, i) => `L${points.getItem(i+1).x} ${points.getItem(i+1).y}`).join(' ');
+                    if (tagName === 'polygon') d += ' Z';
+                }
+            } else if (tagName === 'line') {
+                const line = element as SVGLineElement;
+                d = `M${line.x1.baseVal.value} ${line.y1.baseVal.value} L${line.x2.baseVal.value} ${line.y2.baseVal.value}`;
+            } else if (tagName === 'path') {
+                d = element.getAttribute('d') || '';
+            }
 
-    // Clean up the temporary container
-    document.body.removeChild(tempContainer);
+            if (d) {
+                let segments = parsePathData(d);
+                const matrix = element.getCTM();
+                
+                if (matrix && !matrix.isIdentity) {
+                     segments = applyTransformToSegments(segments, matrix);
+                }
+
+                if (segments.length > 0) {
+                    const shapeStyles = parseStyles(element, defaultStyles);
+                    shapes.push({
+                        id: `shape-${Date.now()}-${Math.random()}`,
+                        type: ToolType.PATH,
+                        segments: segments,
+                        x: 0, y: 0, rotation: 0, // Position and rotation are baked into path data
+                        ...shapeStyles,
+                    });
+                }
+            }
+        });
+    } finally {
+        // Clean up by removing the temporary SVG element from the DOM
+        document.body.removeChild(svgElement);
+    }
 
     return shapes;
 }
